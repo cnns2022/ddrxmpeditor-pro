@@ -572,19 +572,19 @@ class DDR4_XMP:
         self.min_cycle_fc = 0
 
     @property
-    def tAA(self) -> int: return round(self.cl_ns * 1000)
+    def tAA(self) -> int: return round(ticks_with_ftb(self.cl_ticks, self.cl_fc) * 1000)
     @tAA.setter
     def tAA(self, v: int): self.cl_ticks = int(v / 1000 / MTB_NS + 0.5)
     @property
     def tAA_ticks(self) -> int: return self.cl_ticks
     @property
-    def tRCD(self) -> int: return round(self.rcd_ticks * MTB_NS * 1000)
+    def tRCD(self) -> int: return round(ticks_with_ftb(self.rcd_ticks, self.rcd_fc) * 1000)
     @tRCD.setter
     def tRCD(self, v: int): self.rcd_ticks = int(v / 1000 / MTB_NS + 0.5)
     @property
     def tRCD_ticks(self) -> int: return self.rcd_ticks
     @property
-    def tRP(self) -> int: return round(self.rp_ticks * MTB_NS * 1000)
+    def tRP(self) -> int: return round(ticks_with_ftb(self.rp_ticks, self.rp_fc) * 1000)
     @tRP.setter
     def tRP(self, v: int): self.rp_ticks = int(v / 1000 / MTB_NS + 0.5)
     @property
@@ -596,7 +596,7 @@ class DDR4_XMP:
     @property
     def tRAS_ticks(self) -> int: return self.ras_ticks
     @property
-    def tRC(self) -> int: return round(self.rc_ticks * MTB_NS * 1000)
+    def tRC(self) -> int: return round(ticks_with_ftb(self.rc_ticks, self.rc_fc) * 1000)
     @tRC.setter
     def tRC(self, v: int): self.rc_ticks = int(v / 1000 / MTB_NS + 0.5)
     @property

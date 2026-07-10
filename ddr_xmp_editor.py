@@ -918,6 +918,20 @@ class XMPTabFrame(ttk.Frame):
             if attr in self._vars:
                 self._vars[attr].set(getattr(self.xmp, attr))
 
+        # DDR4 XMP: 填充「时间(ns)」列 (含 fc 修正)
+        if self.app.spd_type == 'ddr4':
+            from ddr4_spd_model import MTB_NS, FTB_NS
+            _fc_map = {'cl_ticks': 'cl_fc', 'rcd_ticks': 'rcd_fc', 'rp_ticks': 'rp_fc',
+                       'rc_ticks': 'rc_fc', 'rrds_ticks': 'rrds_fc', 'rrdl_ticks': 'rrdl_fc'}
+            for attr in ['cl_ticks', 'rcd_ticks', 'rp_ticks', 'ras_ticks', 'rc_ticks',
+                         'wr_ticks', 'rfc1_ticks', 'rfc2_ticks', 'rfc4_ticks',
+                         'rrds_ticks', 'rrdl_ticks', 'faw_ticks']:
+                ns_key = f'{attr}_ns'
+                if ns_key in self._vars and attr in self._vars:
+                    ticks = self._vars[attr].get()
+                    fc = getattr(self.xmp, _fc_map[attr], 0) if attr in _fc_map else 0
+                    self._vars[ns_key].set(f'{ticks * MTB_NS + fc * FTB_NS:.3f}')
+
     # ---- 事件回调 ----
 
     def _on_data_changed(self, *args):
