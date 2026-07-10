@@ -727,16 +727,16 @@ class DDR4_SPD:
     _O_WTR_UPPER = 43
     _O_WTRS_TICKS = 44
     _O_WTRL_TICKS = 45
-    # Fine corrections (signed)
-    _O_CCDL_FC = 118
-    _O_RRDL_FC = 119
-    _O_RRDS_FC = 120
-    _O_RC_FC = 121
-    _O_RP_FC = 122
-    _O_RCD_FC = 123
-    _O_CL_FC = 124
-    _O_MAX_CYCLE_FC = 125
-    _O_MIN_CYCLE_FC = 126
+    # Fine corrections (signed) — JEDEC 21-C Annex L §8.1.44~8.1.52, 从 byte 117 起
+    _O_CCDL_FC = 117          # Byte 117: Fine Offset for tCCD_L
+    _O_RRDL_FC = 118          # Byte 118: Fine Offset for tRRD_L
+    _O_RRDS_FC = 119          # Byte 119: Fine Offset for tRRD_S
+    _O_RC_FC = 120            # Byte 120: Fine Offset for tRC
+    _O_RP_FC = 121            # Byte 121: Fine Offset for tRP
+    _O_RCD_FC = 122           # Byte 122: Fine Offset for tRCD
+    _O_CL_FC = 123            # Byte 123: Fine Offset for tAA
+    _O_MAX_CYCLE_FC = 124     # Byte 124: Fine Offset for tCKmax
+    _O_MIN_CYCLE_FC = 125     # Byte 125: Fine Offset for tCKmin
     _O_CRC_LSB = 126
     _O_CRC_MSB = 127
     # Module specific
@@ -771,6 +771,11 @@ class DDR4_SPD:
 
     def _ns_to_ticks(self, ns: float) -> int:
         return int(ns / self.mtb_ns + 0.9999)
+
+    def _ps_to_ticks_fc(self, ps: int):
+        """ps 时间拆成 (MTB ticks 向上取整, FTB 微调 fc)，保证 ticks*MTB + fc*FTB 往返一致。"""
+        ticks = int(ps / (self.mtb_ns * 1000) + 0.9999)
+        return ticks, ps - self._ticks_to_ps(ticks)
 
     def _signed(self, val: int) -> int:
         return val if val < 128 else val - 256
@@ -900,18 +905,32 @@ class DDR4_SPD:
     # ---- Fine Corrections ----
     @property
     def cl_fc(self) -> int: return self._signed(self._data[self._O_CL_FC])
+    @cl_fc.setter
+    def cl_fc(self, v: int): self._data[self._O_CL_FC] = v & 0xFF
     @property
     def rcd_fc(self) -> int: return self._signed(self._data[self._O_RCD_FC])
+    @rcd_fc.setter
+    def rcd_fc(self, v: int): self._data[self._O_RCD_FC] = v & 0xFF
     @property
     def rp_fc(self) -> int: return self._signed(self._data[self._O_RP_FC])
+    @rp_fc.setter
+    def rp_fc(self, v: int): self._data[self._O_RP_FC] = v & 0xFF
     @property
     def rc_fc(self) -> int: return self._signed(self._data[self._O_RC_FC])
+    @rc_fc.setter
+    def rc_fc(self, v: int): self._data[self._O_RC_FC] = v & 0xFF
     @property
     def rrds_fc(self) -> int: return self._signed(self._data[self._O_RRDS_FC])
+    @rrds_fc.setter
+    def rrds_fc(self, v: int): self._data[self._O_RRDS_FC] = v & 0xFF
     @property
     def rrdl_fc(self) -> int: return self._signed(self._data[self._O_RRDL_FC])
+    @rrdl_fc.setter
+    def rrdl_fc(self, v: int): self._data[self._O_RRDL_FC] = v & 0xFF
     @property
     def ccdl_fc(self) -> int: return self._signed(self._data[self._O_CCDL_FC])
+    @ccdl_fc.setter
+    def ccdl_fc(self, v: int): self._data[self._O_CCDL_FC] = v & 0xFF
 
     # ---- 制造信息 ----
     @property
@@ -1033,26 +1052,26 @@ class DDR4_SPD:
 
     # ---- DDR5 兼容属性 (供 GUI 透明使用) ----
     @property
-    def min_cycle_time(self) -> int: return self._ticks_to_ps(self.min_cycle_ticks)
+    def min_cycle_time(self) -> int: return self._ticks_to_ps(self.min_cycle_ticks) + self.min_cycle_fc
     @min_cycle_time.setter
-    def min_cycle_time(self, v: int): self.min_cycle_ticks = int(v / 1000 / self.mtb_ns + 0.5)
+    def min_cycle_time(self, v: int): self.min_cycle_ticks, self.min_cycle_fc = self._ps_to_ticks_fc(v)
     max_cycle_time = 0
     @property
-    def tAA(self) -> int: return self._ticks_to_ps(self.cl_ticks)
+    def tAA(self) -> int: return self._ticks_to_ps(self.cl_ticks) + self.cl_fc
     @tAA.setter
-    def tAA(self, v: int): self.cl_ticks = int(v / 1000 / self.mtb_ns + 0.5)
+    def tAA(self, v: int): self.cl_ticks, self.cl_fc = self._ps_to_ticks_fc(v)
     @property
     def tAA_ticks(self) -> int: return self.cl_ticks
     @property
-    def tRCD(self) -> int: return self._ticks_to_ps(self.rcd_ticks)
+    def tRCD(self) -> int: return self._ticks_to_ps(self.rcd_ticks) + self.rcd_fc
     @tRCD.setter
-    def tRCD(self, v: int): self.rcd_ticks = int(v / 1000 / self.mtb_ns + 0.5)
+    def tRCD(self, v: int): self.rcd_ticks, self.rcd_fc = self._ps_to_ticks_fc(v)
     @property
     def tRCD_ticks(self) -> int: return self.rcd_ticks
     @property
-    def tRP(self) -> int: return self._ticks_to_ps(self.rp_ticks)
+    def tRP(self) -> int: return self._ticks_to_ps(self.rp_ticks) + self.rp_fc
     @tRP.setter
-    def tRP(self, v: int): self.rp_ticks = int(v / 1000 / self.mtb_ns + 0.5)
+    def tRP(self, v: int): self.rp_ticks, self.rp_fc = self._ps_to_ticks_fc(v)
     @property
     def tRP_ticks(self) -> int: return self.rp_ticks
     @property
@@ -1062,9 +1081,9 @@ class DDR4_SPD:
     @property
     def tRAS_ticks(self) -> int: return self.ras_ticks
     @property
-    def tRC(self) -> int: return self._ticks_to_ps(self.rc_ticks)
+    def tRC(self) -> int: return self._ticks_to_ps(self.rc_ticks) + self.rc_fc
     @tRC.setter
-    def tRC(self, v: int): self.rc_ticks = int(v / 1000 / self.mtb_ns + 0.5)
+    def tRC(self, v: int): self.rc_ticks, self.rc_fc = self._ps_to_ticks_fc(v)
     @property
     def tRC_ticks(self) -> int: return self.rc_ticks
     @property
@@ -1092,16 +1111,16 @@ class DDR4_SPD:
     @property
     def tRFCsb_slr_ticks(self) -> int: return self.rfc4_ticks
     @property
-    def tRRD_L(self) -> int: return self._ticks_to_ps(self.rrdl_ticks)
+    def tRRD_L(self) -> int: return self._ticks_to_ps(self.rrdl_ticks) + self.rrdl_fc
     @tRRD_L.setter
-    def tRRD_L(self, v: int): self.rrdl_ticks = int(v / 1000 / self.mtb_ns + 0.5)
+    def tRRD_L(self, v: int): self.rrdl_ticks, self.rrdl_fc = self._ps_to_ticks_fc(v)
     @property
     def tRRD_L_ticks(self) -> int: return self.rrdl_ticks
     tRRD_L_lower_limit = 4
     @property
-    def tCCD_L(self) -> int: return self._ticks_to_ps(self.ccdl_ticks)
+    def tCCD_L(self) -> int: return self._ticks_to_ps(self.ccdl_ticks) + self.ccdl_fc
     @tCCD_L.setter
-    def tCCD_L(self, v: int): self.ccdl_ticks = int(v / 1000 / self.mtb_ns + 0.5)
+    def tCCD_L(self, v: int): self.ccdl_ticks, self.ccdl_fc = self._ps_to_ticks_fc(v)
     @property
     def tCCD_L_ticks(self) -> int: return self.ccdl_ticks
     tCCD_L_lower_limit = 4
@@ -1224,7 +1243,9 @@ def apply_ddr4_speed_bin(spd: DDR4_SPD, bin_name: str) -> bool:
     spd.faw_ticks = spd._ns_to_ticks(b["tFAW_ns"])
     spd.wr_ticks = spd._ns_to_ticks(b["tWR_ns"])
     spd.rrds_ticks = spd._ns_to_ticks(b["tRRD_S_ns"])
+    spd.rrds_fc = round((b["tRRD_S_ns"] - spd.rrds_ticks * MTB_NS) * 1000)
     spd.rrdl_ticks = spd._ns_to_ticks(b["tRRD_L_ns"])
+    spd.rrdl_fc = round((b["tRRD_L_ns"] - spd.rrdl_ticks * MTB_NS) * 1000)
 
     return True
 

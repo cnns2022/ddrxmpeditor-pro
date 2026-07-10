@@ -391,13 +391,17 @@ class SPDTabFrame(ttk.Frame):
             mct_ticks = self.spd.min_cycle_ticks if hasattr(self.spd,'min_cycle_ticks') else 5
             mct_fc = self.spd.min_cycle_fc if hasattr(self.spd,'min_cycle_fc') else 0
             tCK_ns = (mct_ticks * MTB_NS * 1000 + mct_fc * FTB_NS * 1000) / 1000
+            _fc_map = {'cl_ticks':'cl_fc','rcd_ticks':'rcd_fc','rp_ticks':'rp_fc',
+                       'rc_ticks':'rc_fc','rrds_ticks':'rrds_fc','rrdl_ticks':'rrdl_fc',
+                       'ccdl_ticks':'ccdl_fc'}
             for key in ['cl_ticks','rcd_ticks','rp_ticks','ras_ticks','rc_ticks',
                         'wr_ticks','rfc1_ticks','rfc2_ticks','rfc4_ticks',
                         'rrds_ticks','rrdl_ticks','ccdl_ticks','faw_ticks','wtrs_ticks','wtrl_ticks']:
                 if key not in self._vars: continue
                 ticks = self._vars[key].get()
-                # Time(ps) = ticks * MTB_NS * 1000
-                ps = int(ticks * MTB_NS * 1000)
+                fc = getattr(self.spd, _fc_map[key], 0) if key in _fc_map else 0
+                # Time(ps) = ticks * MTB_NS * 1000 + fc * FTB_NS * 1000
+                ps = int(ticks * MTB_NS * 1000 + fc * FTB_NS * 1000)
                 if f'{key}_ps' in self._vars:
                     self._vars[f'{key}_ps'].set(ps)
                 self._dram_updating = True
