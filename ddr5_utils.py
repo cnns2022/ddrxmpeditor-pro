@@ -82,6 +82,13 @@ def time_to_ticks_ddr5(time_ps: int, min_cycle_time: int) -> int:
     return int(temp_nck / 1000)
 
 
+def ticks_to_time_ddr5(ticks: int, min_cycle_time: int) -> int:
+    """将 nCK ticks 反向转换为 ps 时间值（近似逆运算）。"""
+    if min_cycle_time <= 0 or ticks <= 1:
+        return 0
+    return int((ticks * 1000 - 1000) * min_cycle_time / 997)
+
+
 # =============================================================================
 # 电压编解码 (DDR5)
 # =============================================================================

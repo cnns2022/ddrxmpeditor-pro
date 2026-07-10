@@ -47,6 +47,7 @@ def set_children_state(widget, state: str):
 from tkinter import ttk, filedialog, messagebox
 
 # 导入数据模型
+from lang import t as _t, set_lang as _set_lang
 from ddr5_spd_model import (
     DDR5_SPD, XMP_3_0, EXPO,
     FormFactor, Density, OperatingTempRange, CommandRate,
@@ -232,8 +233,8 @@ class SPDTabFrame(ttk.Frame):
             var = tk.IntVar(value=0); var.trace_add('write', self._on_timing_changed)
             self._vars[attr] = var
             ttk.Spinbox(frame, textvariable=var, width=10, from_=1, to=65535, validate='key', validatecommand=vcmd_spin).grid(row=row, column=1, padx=1, pady=1)
-            tick_var = tk.StringVar(value="0"); self._vars[f"{attr}_ticks"] = tick_var
-            ttk.Label(frame, textvariable=tick_var, width=6).grid(row=row, column=2, padx=1, pady=1)
+            tick_var = tk.IntVar(value=0); tick_var.trace_add("write", lambda *a,n=attr: self._on_tick_changed_one(n)); self._vars[f"{attr}_ticks"] = tick_var
+            ttk.Spinbox(frame, textvariable=tick_var, width=6, from_=0, to=65535).grid(row=row, column=2, padx=1, pady=1)
 
         for idx, (name, attr, has_limit) in enumerate(right):
             row = idx + 1
@@ -245,45 +246,52 @@ class SPDTabFrame(ttk.Frame):
                 limit_var = tk.IntVar(value=0); limit_var.trace_add('write', self._on_timing_changed)
                 self._vars[f"{attr}_lower_limit"] = limit_var
                 ttk.Spinbox(frame, textvariable=limit_var, width=6, from_=0, to=255, validate='key', validatecommand=vcmd_limit).grid(row=row, column=6, padx=1, pady=1)
-            tick_var = tk.StringVar(value="0"); self._vars[f"{attr}_ticks"] = tick_var
-            ttk.Label(frame, textvariable=tick_var, width=6).grid(row=row, column=7, padx=1, pady=1)
+            tick_var = tk.IntVar(value=0); tick_var.trace_add("write", lambda *a,n=attr: self._on_tick_changed_one(n)); self._vars[f"{attr}_ticks"] = tick_var
+            ttk.Spinbox(frame, textvariable=tick_var, width=6, from_=0, to=65535).grid(row=row, column=7, padx=1, pady=1)
 
     def _build_timings_ddr4(self):
-        """DDR4 时序参数表 (MTB ticks + ns 显示)。"""
-        frame = ttk.Labelframe(self, text="时序参数 (Timings) - DDR4 (MTB=0.125ns)", padding=5)
+        """DDR4 4列: Name|Value|Time(ps)|Ticks。"""
+        frame = ttk.Labelframe(self, text="Timings - DDR4 (MTB=0.125ns)", padding=5)
         frame.pack(fill=tk.X, padx=5, pady=5)
         self._timing_frame = frame
+        hdrs = [("Name",0),("Value",1),("Time(ps)",2),("Ticks",3),
+                ("",4),("Name",5),("Value",6),("Time(ps)",7),("Ticks",8)]
+        for t,c in hdrs: ttk.Label(frame,text=t,font=('',9,'bold')).grid(row=0,column=c,padx=1,pady=1,sticky=tk.W)
+        left = [('tCL','cl_ticks'),('tRCD','rcd_ticks'),('tRP','rp_ticks'),('tRAS','ras_ticks'),
+                ('tRC','rc_ticks'),('tWR','wr_ticks'),('tRFC1','rfc1_ticks'),('tRFC2','rfc2_ticks'),('tRFC4','rfc4_ticks')]
+        right = [('tRRDS','rrds_ticks'),('tRRDL','rrdl_ticks'),('tCCDL','ccdl_ticks'),
+                 ('tFAW','faw_ticks'),('tWTRS','wtrs_ticks'),('tWTRL','wtrl_ticks')]
+        def build(r,c0,name,attr):
+            ttk.Label(frame,text=f'{name}:',width=8).grid(row=r,column=c0,sticky=tk.W,padx=1,pady=1)
+            # Value = MTB ticks (editable, triggers recompute)
+            vv=tk.IntVar(value=0);vv.trace_add('write',self._on_timing_changed);self._vars[attr]=vv
+            ttk.Spinbox(frame,textvariable=vv,width=6,from_=0,to=65535).grid(row=r,column=c0+1,padx=1)
+            # Time(ps) = computed (Spinbox display, no trace)
+            pv=tk.IntVar(value=0);self._vars[f'{attr}_ps']=pv
+            ttk.Spinbox(frame,textvariable=pv,width=8,from_=1,to=65535).grid(row=r,column=c0+2,padx=1)
+            # Ticks = DRAM ticks (editable, updates Value)
+            tv=tk.IntVar(value=0);tv.trace_add('write',lambda *a,at=attr: self._on_ddr4_ticks_to_value(at))
+            self._vars[f'{attr}_val']=tv
+            ttk.Spinbox(frame,textvariable=tv,width=5,from_=1,to=65535).grid(row=r,column=c0+3,padx=1)
+        for i,(n,a) in enumerate(left): build(i+1,0,n,a)
+        for i,(n,a) in enumerate(right): build(i+1,5,n,a)
 
-        headers = [("参数名", 0), ("Ticks", 1), ("时间 (ns)", 2), ("", 3),
-                   ("参数名", 4), ("Ticks", 5), ("时间 (ns)", 6)]
-        for text, col in headers:
-            ttk.Label(frame, text=text, font=('', 9, 'bold')).grid(row=0, column=col, padx=2, pady=1, sticky=tk.W)
-
-        vcmd = (self.register(lambda P: _on_spinbox_validate_int(P, 0, 65535)), '%P')
-
-        left = [('tAA (CL)', 'cl_ticks'), ('tRCD', 'rcd_ticks'), ('tRP', 'rp_ticks'),
-                ('tRAS', 'ras_ticks'), ('tRC', 'rc_ticks'), ('tWR', 'wr_ticks'),
-                ('tRFC1', 'rfc1_ticks'), ('tRFC2', 'rfc2_ticks'), ('tRFC4', 'rfc4_ticks')]
-        right = [('tRRD_S', 'rrds_ticks'), ('tRRD_L', 'rrdl_ticks'), ('tCCD_L', 'ccdl_ticks'),
-                 ('tFAW', 'faw_ticks'), ('tWTR_S', 'wtrs_ticks'), ('tWTR_L', 'wtrl_ticks')]
-
-        for idx, (name, attr) in enumerate(left):
-            row = idx + 1
-            ttk.Label(frame, text=f"{name}:", width=14).grid(row=row, column=0, sticky=tk.W, padx=1, pady=1)
-            var = tk.IntVar(value=0); var.trace_add('write', self._on_timing_changed)
-            self._vars[attr] = var
-            ttk.Spinbox(frame, textvariable=var, width=8, from_=0, to=65535, validate='key', validatecommand=vcmd).grid(row=row, column=1, padx=1, pady=1)
-            ns_var = tk.StringVar(value="0"); self._vars[f"{attr}_ns"] = ns_var
-            ttk.Label(frame, textvariable=ns_var, width=8).grid(row=row, column=2, padx=1, pady=1)
-
-        for idx, (name, attr) in enumerate(right):
-            row = idx + 1
-            ttk.Label(frame, text=f"{name}:", width=14).grid(row=row, column=4, sticky=tk.W, padx=1, pady=1)
-            var = tk.IntVar(value=0); var.trace_add('write', self._on_timing_changed)
-            self._vars[attr] = var
-            ttk.Spinbox(frame, textvariable=var, width=8, from_=0, to=65535, validate='key', validatecommand=vcmd).grid(row=row, column=5, padx=1, pady=1)
-            ns_var = tk.StringVar(value="0"); self._vars[f"{attr}_ns"] = ns_var
-            ttk.Label(frame, textvariable=ns_var, width=8).grid(row=row, column=6, padx=1, pady=1)
+    def _on_ddr4_ticks_to_value(self, attr):
+        """DDR4 Ticks(DRAM) → Value(MTB)。"""
+        if self._setting_vars or self.spd is None: return
+        if getattr(self, '_dram_updating', False): return
+        from ddr4_spd_model import MTB_NS
+        val_key = f'{attr}_val'
+        if val_key not in self._vars or attr not in self._vars: return
+        dram = self._vars[val_key].get()
+        mct = getattr(self.spd, 'min_cycle_ticks', 5)
+        mfc = getattr(self.spd, 'min_cycle_fc', 0)
+        tCK_ps = mct * MTB_NS * 1000 + mfc * 0.001 * 1000
+        mtb = int(dram * tCK_ps / (MTB_NS * 1000)) if tCK_ps > 0 else dram
+        mtb = max(1, mtb)
+        if self._vars[attr].get() != mtb:
+            self._vars[attr].set(mtb)
+            if hasattr(self.spd, attr): setattr(self.spd, attr, mtb)
 
     # ---- Speed Bin 回调 ----
 
@@ -372,26 +380,36 @@ class SPDTabFrame(ttk.Frame):
 
         mct = getattr(self.spd, 'min_cycle_time', 0) or getattr(self.spd, 'min_cycle_ticks', 0)
         if self.app.spd_type == 'ddr4':
-            from ddr4_spd_model import MTB_NS
+            from ddr4_spd_model import MTB_NS, FTB_NS
             mct_ns = self.spd.min_cycle_ticks * MTB_NS if hasattr(self.spd, 'min_cycle_ticks') else 0
             mct_ps = mct_ns * 1000
             freq_str = f"{1.0 / mct_ns:.3f} MHz" if mct_ns > 0 else "N/A"
             mt_str = f"{2.0 / mct_ns:.3f} MT/s" if mct_ns > 0 else "N/A"
             self._freq_var.set(freq_str)
             self._mt_var.set(mt_str)
-            # DDR4: ticks → ns
-            for key in ['cl_ticks', 'rcd_ticks', 'rp_ticks', 'ras_ticks', 'rc_ticks',
-                        'wr_ticks', 'rfc1_ticks', 'rfc2_ticks', 'rfc4_ticks',
-                        'rrds_ticks', 'rrdl_ticks', 'ccdl_ticks',
-                        'faw_ticks', 'wtrs_ticks', 'wtrl_ticks']:
-                ns_key = f"{key}_ns"
-                if ns_key in self._vars and key in self._vars:
-                    ticks = self._vars[key].get()
-                    self._vars[ns_key].set(f"{ticks * MTB_NS:.2f}")
+            # DDR4: ticks → Value(MTB) + Time(ps IntVar) + Ticks(DRAM)
+            mct_ticks = self.spd.min_cycle_ticks if hasattr(self.spd,'min_cycle_ticks') else 5
+            mct_fc = self.spd.min_cycle_fc if hasattr(self.spd,'min_cycle_fc') else 0
+            tCK_ns = (mct_ticks * MTB_NS * 1000 + mct_fc * FTB_NS * 1000) / 1000
+            for key in ['cl_ticks','rcd_ticks','rp_ticks','ras_ticks','rc_ticks',
+                        'wr_ticks','rfc1_ticks','rfc2_ticks','rfc4_ticks',
+                        'rrds_ticks','rrdl_ticks','ccdl_ticks','faw_ticks','wtrs_ticks','wtrl_ticks']:
+                if key not in self._vars: continue
+                ticks = self._vars[key].get()
+                # Time(ps) = ticks * MTB_NS * 1000
+                ps = int(ticks * MTB_NS * 1000)
+                if f'{key}_ps' in self._vars:
+                    self._vars[f'{key}_ps'].set(ps)
+                self._dram_updating = True
+                if f'{key}_val' in self._vars and tCK_ns > 0:
+                    import math
+                    self._vars[f'{key}_val'].set(max(1, math.ceil(ps / tCK_ns / 1000)))
+            self._dram_updating = False
         else:
             freq_str, mt_str = format_frequency(mct)
             self._freq_var.set(freq_str)
             self._mt_var.set(mt_str)
+            self._tick_updating = True
             tick_map = {
                 'tAA_ticks': 'tAA_ticks', 'tRCD_ticks': 'tRCD_ticks',
                 'tRP_ticks': 'tRP_ticks', 'tRAS_ticks': 'tRAS_ticks',
@@ -402,9 +420,26 @@ class SPDTabFrame(ttk.Frame):
                 'tCCD_L_WR2_ticks': 'tCCD_L_WR2_ticks', 'tFAW_ticks': 'tFAW_ticks',
                 'tCCD_L_WTR_ticks': 'tCCD_L_WTR_ticks', 'tCCD_S_WTR_ticks': 'tCCD_S_WTR_ticks',
                 'tRTP_ticks': 'tRTP_ticks'}
+            from_ticks = getattr(self, "_from_ticks", None)
             for var_key, attr in tick_map.items():
-                if var_key in self._vars:
-                    self._vars[var_key].set(str(getattr(self.spd, attr)))
+                if var_key in self._vars and var_key != from_ticks:
+                    self._vars[var_key].set(getattr(self.spd, attr))
+            self._from_ticks = None
+            self._tick_updating = False
+
+    def _on_tick_changed_one(self, attr_name):
+        if self._setting_vars or self.spd is None: return
+        if getattr(self, '_tick_updating', False): return
+        from ddr5_utils import ticks_to_time_ddr5
+        mct = getattr(self.spd, 'min_cycle_time', 0) or 416
+        tk = f'{attr_name}_ticks'
+        if tk in self._vars and attr_name in self._vars:
+            t = self._vars[tk].get()
+            if t > 0 and mct > 0:
+                ps = ticks_to_time_ddr5(t, mct)
+                self._from_ticks = tk
+                self._vars[attr_name].set(max(1, ps))
+                if hasattr(self.spd, attr_name): setattr(self.spd, attr_name, max(1, ps))
 
     def _on_cl_changed(self, *args):
         """CAS Latency 复选框变更回调。"""
@@ -437,19 +472,15 @@ class SPDTabFrame(ttk.Frame):
                 'tRFC1_slr', 'tRFC2_slr', 'tRFCsb_slr',
                 'tRRD_L', 'tCCD_L', 'tCCD_L_WR', 'tCCD_L_WR2',
                 'tFAW', 'tCCD_L_WTR', 'tCCD_S_WTR', 'tRTP',
-        ]
+            ]
+            for attr in timing_attrs:
+                if attr in self._vars:
+                    setattr(self.spd, attr, self._vars[attr].get())
+                limit_attr = f"{attr}_lower_limit"
+                if limit_attr in self._vars:
+                    setattr(self.spd, limit_attr, self._vars[limit_attr].get())
 
-        for attr in timing_attrs:
-            if attr in self._vars:
-                setattr(self.spd, attr, self._vars[attr].get())
-            limit_attr = f"{attr}_lower_limit"
-            if limit_attr in self._vars:
-                setattr(self.spd, limit_attr, self._vars[limit_attr].get())
-
-        # 延迟计算，合并多次变更
-        if getattr(self, '_update_job', None):
-            self.after_cancel(self._update_job)
-        self._update_job = self.after(30, self._update_computed)
+        self._update_computed()
 
 
 # =============================================================================
@@ -700,9 +731,10 @@ class XMPTabFrame(ttk.Frame):
                              validatecommand=vcmd_spin)
             sb.grid(row=row, column=1, padx=1, pady=1)
 
-            tick_var = tk.StringVar(value="0")
+            tick_var = tk.IntVar(value=0)
+            tick_var.trace_add("write", lambda *a,n=attr: self._on_tick_changed_one(n))
             self._vars[f"{attr}_ticks"] = tick_var
-            ttk.Label(frame, textvariable=tick_var, width=6).grid(
+            ttk.Spinbox(frame, textvariable=tick_var, width=6, from_=0, to=65535).grid(
                 row=row, column=2, padx=1, pady=1)
 
         for idx, (name, attr) in enumerate(right_timings):
@@ -726,9 +758,10 @@ class XMPTabFrame(ttk.Frame):
                                validatecommand=vcmd_limit)
             sb_l.grid(row=row, column=6, padx=1, pady=1)
 
-            tick_var = tk.StringVar(value="0")
+            tick_var = tk.IntVar(value=0)
+            tick_var.trace_add("write", lambda *a,n=attr: self._on_tick_changed_one(n))
             self._vars[f"{attr}_ticks"] = tick_var
-            ttk.Label(frame, textvariable=tick_var, width=6).grid(
+            ttk.Spinbox(frame, textvariable=tick_var, width=6, from_=0, to=65535).grid(
                 row=row, column=7, padx=1, pady=1)
 
     def _build_timings_ddr4(self):
@@ -863,7 +896,7 @@ class XMPTabFrame(ttk.Frame):
         """更新计算值。"""
         if self.xmp is None:
             return
-
+        self._tick_updating = True
         mct = self.xmp.min_cycle_time
         freq_str, mt_str = format_frequency(mct)
         self._freq_var.set(freq_str)
@@ -879,7 +912,7 @@ class XMPTabFrame(ttk.Frame):
 
         for attr in tick_attrs:
             if attr in self._vars:
-                self._vars[attr].set(str(getattr(self.xmp, attr)))
+                self._vars[attr].set(getattr(self.xmp, attr))
 
     # ---- 事件回调 ----
 
@@ -929,9 +962,7 @@ class XMPTabFrame(ttk.Frame):
                 if limit_attr in self._vars:
                     setattr(self.xmp, limit_attr, self._vars[limit_attr].get())
 
-        if getattr(self, '_update_job', None):
-            self.after_cancel(self._update_job)
-        self._update_job = self.after(30, self._update_computed)
+        self._update_computed()
 
     def _on_name_changed(self, *args):
         """Profile 名称变更。"""
@@ -976,6 +1007,20 @@ class XMPTabFrame(ttk.Frame):
         if applied:
             self.spd.update_crc()
             self.load_spd(self.spd)
+
+    def _on_tick_changed_one(self, attr_name):
+        if self._setting_vars or self.xmp is None: return
+        if getattr(self, '_tick_updating', False): return
+        from ddr5_utils import ticks_to_time_ddr5
+        mct = getattr(self.xmp, 'min_cycle_time', 0) or 416
+        tk = f'{attr_name}_ticks'
+        if tk in self._vars and attr_name in self._vars:
+            t = self._vars[tk].get()
+            if t > 0 and mct > 0:
+                ps = ticks_to_time_ddr5(t, mct)
+                self._from_ticks = tk
+                self._vars[attr_name].set(max(1, ps))
+                if hasattr(self.xmp, attr_name): setattr(self.xmp, attr_name, max(1, ps))
 
     def _on_cmd_rate_changed(self, *args):
         """命令速率变更。"""
@@ -1135,9 +1180,10 @@ class EXPOTabFrame(ttk.Frame):
                              validatecommand=vcmd_spin)
             sb.grid(row=row, column=1, padx=1, pady=1)
 
-            tick_var = tk.StringVar(value="0")
+            tick_var = tk.IntVar(value=0)
+            tick_var.trace_add("write", lambda *a,n=attr: self._on_tick_changed_one(n))
             self._vars[f"{attr}_ticks"] = tick_var
-            ttk.Label(frame, textvariable=tick_var, width=6).grid(
+            ttk.Spinbox(frame, textvariable=tick_var, width=6, from_=0, to=65535).grid(
                 row=row, column=2, padx=1, pady=1)
 
         for idx, (name, attr) in enumerate(right_timings):
@@ -1197,6 +1243,9 @@ class EXPOTabFrame(ttk.Frame):
         names = [""] + sorted(DDR5_SPEED_BINS.keys())
         self._speed_bin_combo['values'] = names
 
+    def _on_tick_changed_one(self, attr_name):
+        pass  # EXPO ticks are display-only (no bidirectional sync needed)
+
     def _on_apply_speed_bin(self):
         """应用 Speed Bin 到当前 EXPO Profile。"""
         bin_name = self._speed_bin_var.get()
@@ -1253,9 +1302,7 @@ class EXPOTabFrame(ttk.Frame):
             if attr in self._vars:
                 setattr(self.expo, attr, self._vars[attr].get())
 
-        if getattr(self, '_update_job', None):
-            self.after_cancel(self._update_job)
-        self._update_job = self.after(30, self._update_computed)
+        self._update_computed()
 
 
 # =============================================================================
@@ -1679,23 +1726,26 @@ class DDR5XMPEditorApp:
     # ---- 菜单栏 ----
 
     def _build_menu(self):
-        """构建菜单栏。"""
-        menubar = tk.Menu(self.root)
-        self.root.config(menu=menubar)
+        self._menubar = tk.Menu(self.root)
+        self.root.config(menu=self._menubar)
+        self._rebuild_menu_labels()
 
+    def _rebuild_menu_labels(self):
+        menubar = self._menubar
+        menubar.delete(0, 'end')
         file_menu = tk.Menu(menubar, tearoff=0)
-        file_menu.add_command(label="打开 (Open)...", command=self._on_open,
-                              accelerator="Ctrl+O")
-        file_menu.add_command(label="保存 (Save)...", command=self._on_save,
-                              accelerator="Ctrl+S")
+        file_menu.add_command(label=_t('menu_open'), command=self._on_open, accelerator='Ctrl+O')
+        file_menu.add_command(label=_t('menu_save'), command=self._on_save, accelerator='Ctrl+S')
         file_menu.add_separator()
-        file_menu.add_command(label="退出 (Exit)", command=self.root.quit)
-        menubar.add_cascade(label="文件 (File)", menu=file_menu)
-
-        # Help 菜单
+        file_menu.add_command(label=_t('menu_exit'), command=self.root.quit)
+        menubar.add_cascade(label=_t('menu_file'), menu=file_menu)
+        lang_menu = tk.Menu(menubar, tearoff=0)
+        lang_menu.add_command(label=_t('menu_lang_zh'), command=lambda: self._on_lang_change('zh'))
+        lang_menu.add_command(label=_t('menu_lang_en'), command=lambda: self._on_lang_change('en'))
+        menubar.add_cascade(label=_t('menu_lang'), menu=lang_menu)
         help_menu = tk.Menu(menubar, tearoff=0)
-        help_menu.add_command(label="使用说明 (Help)", command=self._on_help)
-        menubar.add_cascade(label="帮助 (Help)", menu=help_menu)
+        help_menu.add_command(label=_t('menu_usage'), command=self._on_help)
+        menubar.add_cascade(label=_t('menu_help'), menu=help_menu)
 
         # 快捷键
         self.root.bind('<Control-o>', lambda e: self._on_open())
@@ -1862,6 +1912,15 @@ class DDR5XMPEditorApp:
                 f"DDR5 SPD 已成功保存到:\n{filepath}")
         except Exception as e:
             messagebox.showerror("保存失败", f"保存文件时出错:\n{e}")
+
+    def _on_lang_change(self, lang):
+        _set_lang(lang)
+        self._rebuild_menu_labels()
+        spd = self.current_spd
+        self._rebuild_tabs()
+        if spd:
+            self.current_spd = spd
+            self.refresh_all_tabs()
 
     # ---- 帮助 ----
 

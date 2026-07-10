@@ -1,0 +1,49 @@
+# CLAUDE.md — DDR XMP Editor Pro 开发规则
+
+## 禁止事项
+
+### 1. 禁止用 bulk 脚本批量替换代码
+- **绝不**用 `py -c "c.replace(...)"` 批量修改 `ddr_xmp_editor.py`
+- 每次批量替换都引入新 bug（缩进错乱、死代码、误匹配）
+- 必须**手动逐行修改**，Read → Edit → Verify
+
+### 2. 禁止 `git checkout` 回退
+- 回退会丢掉所有功能（language、DDR4 5列、ticks Spinbox）
+- 重新加回功能时必然出错
+- 修 bug 用 Edit，不回退
+
+### 3. 一次只改一个类/方法
+- 改 SPDTabFrame 时不要动 XMPTabFrame
+- 改 DDR5 时不要动 DDR4
+- 改完一个类完整测试后再改下一个
+
+### 4. 双向联动必须先设计防护
+- value↔ticks 联动必须加 guard flag（`_tick_updating`、`_dram_updating`）
+- `_update_computed` 开始时设 guard=True，结束时设 guard=False
+- 回调中检查 guard，True 则直接 return
+
+## 代码结构
+
+```
+ddr_xmp_editor_pro/
+├── lang.py              # 语言字符串（新增功能放这里）
+├── ddr5_utils.py        # CRC、转换函数（只追加新函数，不改现有）
+├── ddr5_spd_model.py    # DDR5 数据模型
+├── ddr4_spd_model.py    # DDR4 数据模型
+└── ddr_xmp_editor.py    # GUI 主程序
+```
+
+### GUI 类层次
+- `DDR5XMPEditorApp` — 主窗口，菜单，标签页管理
+- `SPDTabFrame` — SPD 时序编辑（DDR4/DDR5 双模式）
+- `XMPTabFrame` — XMP Profile 编辑（DDR4/DDR5 双模式）
+- `EXPOTabFrame` — EXPO 编辑（仅 DDR5）
+- `MiscTabFrame` — 杂项设置
+
+## 修改流程
+
+1. **Read** 要改的区域（前后各多读 20 行确认上下文）
+2. **Edit** 精确替换，old_string 必须唯一
+3. **Bash** 运行 `py -c "import..."` 验证编译通过
+4. **Bash** 运行功能测试确认正确
+5. **Git commit** 每个功能点单独提交
