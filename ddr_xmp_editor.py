@@ -1890,11 +1890,6 @@ class DDR5XMPEditorApp:
             self.current_filepath = filepath
             self._file_label_var.set(f"{os.path.basename(filepath)} [{self.spd_type.upper()}]")
 
-            # 警告 EXPO (DDR5 only)
-            if self.spd_type == 'ddr5' and spd.expo_found:
-                messagebox.showwarning("EXPO 警告",
-                    "检测到 EXPO 数据。\n\n当前对 EXPO 的支持仍处于实验阶段！")
-
             # 重建标签页
             self._rebuild_tabs()
             self.refresh_all_tabs()

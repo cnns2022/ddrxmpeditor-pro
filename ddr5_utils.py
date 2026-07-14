@@ -83,10 +83,10 @@ def time_to_ticks_ddr5(time_ps: int, min_cycle_time: int) -> int:
 
 
 def ticks_to_time_ddr5(ticks: int, min_cycle_time: int) -> int:
-    """将 nCK ticks 反向转换为 ps 时间值（近似逆运算）。"""
-    if min_cycle_time <= 0 or ticks <= 1:
+    """nCK ticks 直接转换为 ps 时间值。"""
+    if min_cycle_time <= 0:
         return 0
-    return int((ticks * 1000 - 1000) * min_cycle_time / 997)
+    return ticks * min_cycle_time
 
 
 # =============================================================================
