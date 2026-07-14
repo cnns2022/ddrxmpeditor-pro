@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-DDR XMP Editor Pro V1.0 — tkinter GUI 主应用
+DDR XMP Editor Pro V1.4 — tkinter GUI 主应用
 =============================================
 DDR4/DDR5 SPD 二进制文件编辑器，支持 XMP 2.0/3.0 和 EXPO 配置。
 作者: 周强  cnns@sina.com
@@ -1726,11 +1726,11 @@ class MiscTabFrame(ttk.Frame):
 # =============================================================================
 
 class DDR5XMPEditorApp:
-    """DDR XMP Editor Pro V1.0 — 周强  cnns@sina.com"""
+    """DDR XMP Editor Pro V1.4 — 周强  cnns@sina.com"""
 
     def __init__(self):
         self.root = tk.Tk()
-        self.root.title("DDR XMP Editor Pro V1.0 — 周强  cnns@sina.com")
+        self.root.title("DDR XMP Editor Pro V1.4 — 周强  cnns@sina.com")
         self.root.geometry("820x750")
         self.root.minsize(780, 700)
 
@@ -1945,7 +1945,7 @@ class DDR5XMPEditorApp:
     def _on_help(self):
         """显示使用说明（自定义尺寸窗口）。"""
         help_text = (
-            "DDR5 XMP Editor Pro V1.0\n"
+            "DDR5 XMP Editor Pro V1.4\n"
             "DDR5 SPD 二进制文件编辑器 — 支持 XMP 3.0 / EXPO 配置\n"
             "作者: 周强  cnns@sina.com\n"
             "This is a fork of DDR5 XMP Editor\n\n"
@@ -1995,7 +1995,7 @@ class DDR5XMPEditorApp:
         )
 
         win = tk.Toplevel(self.root)
-        win.title("DDR5 XMP Editor Pro V1.0 — 使用说明")
+        win.title("DDR5 XMP Editor Pro V1.4 — 使用说明")
         win.geometry("750x460")
         win.resizable(True, True)
         win.transient(self.root)
