@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-DDR XMP Editor Pro V1.9 — tkinter GUI 主应用
+DDR XMP Editor Pro V1.10 — tkinter GUI 主应用
 =============================================
 DDR4/DDR5 SPD 二进制文件编辑器，支持 XMP 2.0/3.0 和 EXPO 配置。
 作者: 周强  cnns@sina.com
@@ -73,14 +73,17 @@ def format_frequency(min_cycle_time: int) -> str:
 
 
 def _on_spinbox_validate_int(P, min_val, max_val):
-    """验证 Spinbox 输入是否为有效整数。"""
+    """验证 Spinbox 输入是否为有效整数（允许部分输入）。"""
     if P == "" or P == "-":
         return True
     try:
         v = int(P)
-        return min_val <= v <= max_val
+        # 检查值是否可能是未完成的有效输入（如 "1" 可能是 "120" 的前缀）
+        if P[0] == "0" and len(P) > 1:
+            return False  # 拒绝前导零如 "0120"
+        return True  # 输入中不拦截，spinbox 在失去焦点时会自行 clamp
     except ValueError:
-        return False
+        return True
 
 
 # =============================================================================
@@ -956,7 +959,8 @@ class XMPTabFrame(ttk.Frame):
         else:
             for key in ['vdd', 'vddq', 'vpp', 'vmemctrl']:
                 if key in self._vars:
-                    setattr(self.xmp, key, self._vars[key].get())
+                    try: setattr(self.xmp, key, self._vars[key].get())
+                    except (ValueError, Exception): pass
 
         # CAS Latency（直接通过 XMP 内部方法写入原始 bytearray）
         for cl, var in self._cl_vars.items():
@@ -1222,9 +1226,10 @@ class EXPOTabFrame(ttk.Frame):
                              validatecommand=vcmd_spin)
             sb.grid(row=row, column=5, padx=1, pady=1)
 
-            tick_var = tk.StringVar(value="0")
+            tick_var = tk.IntVar(value=0)
+            tick_var.trace_add("write", lambda *a,n=attr: self._on_tick_changed_one(n))
             self._vars[f"{attr}_ticks"] = tick_var
-            ttk.Label(frame, textvariable=tick_var, width=6).grid(
+            ttk.Spinbox(frame, textvariable=tick_var, width=6, from_=0, to=65535).grid(
                 row=row, column=6, padx=1, pady=1)
 
     # ---- 数据加载 ----
@@ -1267,7 +1272,20 @@ class EXPOTabFrame(ttk.Frame):
         self._speed_bin_combo['values'] = names
 
     def _on_tick_changed_one(self, attr_name):
-        pass  # EXPO ticks are display-only (no bidirectional sync needed)
+        if self._setting_vars or self.expo is None: return
+        if getattr(self, '_tick_updating', False): return
+        from ddr5_utils import ticks_to_time_ddr5
+        mct = getattr(self.expo, 'min_cycle_time', 0) or 416
+        tk = f'{attr_name}_ticks'
+        if tk in self._vars and attr_name in self._vars:
+            t = self._vars[tk].get()
+            if t > 0 and mct > 0:
+                time_val = ticks_to_time_ddr5(t, mct)
+                if attr_name.startswith('tRFC'):
+                    time_val = time_val // 1000
+                self._from_ticks = tk
+                self._vars[attr_name].set(max(1, time_val))
+                if hasattr(self.expo, attr_name): setattr(self.expo, attr_name, max(1, time_val))
 
     def _on_apply_speed_bin(self):
         """应用 Speed Bin 到当前 EXPO Profile。"""
@@ -1287,6 +1305,7 @@ class EXPOTabFrame(ttk.Frame):
         """更新计算值。"""
         if self.expo is None:
             return
+        self._tick_updating = True
 
         mct = self.expo.min_cycle_time
         freq_str, mt_str = format_frequency(mct)
@@ -1300,9 +1319,12 @@ class EXPOTabFrame(ttk.Frame):
             'tCCD_L_WR_ticks', 'tCCD_L_WR2_ticks', 'tFAW_ticks',
             'tCCD_L_WTR_ticks', 'tCCD_S_WTR_ticks', 'tRTP_ticks',
         ]
+        from_ticks = getattr(self, "_from_ticks", None)
         for attr in tick_attrs:
-            if attr in self._vars:
-                self._vars[attr].set(str(getattr(self.expo, attr)))
+            if attr in self._vars and attr != from_ticks:
+                self._vars[attr].set(getattr(self.expo, attr))
+        self._from_ticks = None
+        self._tick_updating = False
 
     def _on_data_changed(self, *args):
         """数据变更回调。"""
@@ -1313,7 +1335,8 @@ class EXPOTabFrame(ttk.Frame):
 
         for key in ['vdd', 'vddq', 'vpp']:
             if key in self._vars:
-                setattr(self.expo, key, self._vars[key].get())
+                try: setattr(self.expo, key, self._vars[key].get())
+                except (ValueError, Exception): pass
 
         timing_attrs = [
             'tAA', 'tRCD', 'tRP', 'tRAS', 'tRC', 'tWR',
@@ -1731,11 +1754,11 @@ class MiscTabFrame(ttk.Frame):
 # =============================================================================
 
 class DDR5XMPEditorApp:
-    """DDR XMP Editor Pro V1.9 — 周强  cnns@sina.com"""
+    """DDR XMP Editor Pro V1.10 — 周强  cnns@sina.com"""
 
     def __init__(self):
         self.root = tk.Tk()
-        self.root.title("DDR XMP Editor Pro V1.9 — 周强  cnns@sina.com")
+        self.root.title("DDR XMP Editor Pro V1.10 — 周强  cnns@sina.com")
         self.root.geometry("820x750")
         self.root.minsize(780, 700)
 
@@ -1945,7 +1968,7 @@ class DDR5XMPEditorApp:
     def _on_help(self):
         """显示使用说明（自定义尺寸窗口）。"""
         help_text = (
-            "DDR5 XMP Editor Pro V1.9\n"
+            "DDR5 XMP Editor Pro V1.10\n"
             "DDR5 SPD 二进制文件编辑器 — 支持 XMP 3.0 / EXPO 配置\n"
             "作者: 周强  cnns@sina.com\n"
             "This is a fork of DDR5 XMP Editor\n\n"
@@ -1995,7 +2018,7 @@ class DDR5XMPEditorApp:
         )
 
         win = tk.Toplevel(self.root)
-        win.title("DDR5 XMP Editor Pro V1.9 — 使用说明")
+        win.title("DDR5 XMP Editor Pro V1.10 — 使用说明")
         win.geometry("750x460")
         win.resizable(True, True)
         win.transient(self.root)

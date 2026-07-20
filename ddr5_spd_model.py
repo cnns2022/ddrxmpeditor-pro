@@ -921,8 +921,8 @@ def apply_speed_bin(spd: 'DDR5_SPD', bin_name: str) -> bool:
     # 第二时序 (ns → ps)
     spd.tRRD_L = _ns2ps(b["tRRD_L_ns"])
     spd.tCCD_L = _ns2ps(max(b["tRRD_L_ns"], 4.0))  # tCCD_L = max(tRRD_L, 4ns)
-    spd.tCCD_L_WR = _ns2ps(max(b["tWTR_L_ns"] + b["tWR_ns"], 20.0))
-    spd.tCCD_L_WR2 = _ns2ps(max(b["tWTR_L_ns"] + b["tWR_ns"] / 2, 10.0))
+    spd.tCCD_L_WR = max(32 * mct, 20000)  # Max(32nCK, 20ns)
+    spd.tCCD_L_WR2 = max(16 * mct, 10000)  # Max(16nCK, 10ns)
     spd.tFAW = _ns2ps(b["tFAW_ns"])
     spd.tCCD_L_WTR = _ns2ps(b["tWTR_L_ns"])
     spd.tCCD_S_WTR = _ns2ps(b["tWTR_S_ns"])
@@ -935,8 +935,8 @@ def apply_speed_bin(spd: 'DDR5_SPD', bin_name: str) -> bool:
     from ddr5_utils import time_to_ticks_ddr5
     spd.tRRD_L_lower_limit = max(4, time_to_ticks_ddr5(_ns2ps(b["tRRD_L_ns"]), mct))
     spd.tCCD_L_lower_limit = max(4, time_to_ticks_ddr5(_ns2ps(max(b["tRRD_L_ns"], 4.0)), mct))
-    spd.tCCD_L_WR_lower_limit = max(16, time_to_ticks_ddr5(_ns2ps(b["tWR_ns"]), mct))
-    spd.tCCD_L_WR2_lower_limit = max(8, time_to_ticks_ddr5(_ns2ps(b["tWR_ns"] / 2), mct))
+    spd.tCCD_L_WR_lower_limit = 32
+    spd.tCCD_L_WR2_lower_limit = 16
     spd.tFAW_lower_limit = max(20, time_to_ticks_ddr5(_ns2ps(b["tFAW_ns"]), mct))
     spd.tCCD_L_WTR_lower_limit = max(4, time_to_ticks_ddr5(_ns2ps(b["tWTR_L_ns"]), mct))
     spd.tCCD_S_WTR_lower_limit = max(2, time_to_ticks_ddr5(_ns2ps(b["tWTR_S_ns"]), mct))
@@ -998,8 +998,8 @@ def apply_speed_bin_to_xmp(xmp: 'XMP_3_0', bin_name: str) -> bool:
 
     xmp.tRRD_L = tRRD_L_ps
     xmp.tCCD_L = _ns2ps(max(b["tRRD_L_ns"], 4.0))
-    xmp.tCCD_L_WR = _ns2ps(max(b["tWTR_L_ns"] + b["tWR_ns"], 20.0))
-    xmp.tCCD_L_WR2 = _ns2ps(max(b["tWTR_L_ns"] + b["tWR_ns"] / 2, 10.0))
+    xmp.tCCD_L_WR = max(32 * mct, 20000)  # Max(32nCK, 20ns)
+    xmp.tCCD_L_WR2 = max(16 * mct, 10000)  # Max(16nCK, 10ns)
     xmp.tFAW = tFAW_ps
     xmp.tCCD_L_WTR = tWTR_L_ps
     xmp.tCCD_S_WTR = tWTR_S_ps
@@ -1010,8 +1010,8 @@ def apply_speed_bin_to_xmp(xmp: 'XMP_3_0', bin_name: str) -> bool:
     from ddr5_utils import time_to_ticks_ddr5
     xmp.tRRD_L_lower_limit = max(4, time_to_ticks_ddr5(tRRD_L_ps, mct))
     xmp.tCCD_L_lower_limit = max(4, time_to_ticks_ddr5(_ns2ps(max(b["tRRD_L_ns"], 4.0)), mct))
-    xmp.tCCD_L_WR_lower_limit = max(16, time_to_ticks_ddr5(tWR_ps, mct))
-    xmp.tCCD_L_WR2_lower_limit = max(8, time_to_ticks_ddr5(_ns2ps(b["tWR_ns"] / 2), mct))
+    xmp.tCCD_L_WR_lower_limit = 32
+    xmp.tCCD_L_WR2_lower_limit = 16
     xmp.tFAW_lower_limit = max(20, time_to_ticks_ddr5(tFAW_ps, mct))
     xmp.tCCD_L_WTR_lower_limit = max(4, time_to_ticks_ddr5(tWTR_L_ps, mct))
     xmp.tCCD_S_WTR_lower_limit = max(2, time_to_ticks_ddr5(tWTR_S_ps, mct))
@@ -1061,8 +1061,11 @@ def apply_speed_bin_to_expo(expo: 'EXPO', bin_name: str) -> bool:
 
     expo.tRRD_L = _ns2ps(b["tRRD_L_ns"])
     expo.tCCD_L = _ns2ps(max(b["tRRD_L_ns"], 4.0))
-    expo.tCCD_L_WR = _ns2ps(max(b["tWTR_L_ns"] + b["tWR_ns"], 20.0))
-    expo.tCCD_L_WR2 = _ns2ps(max(b["tWTR_L_ns"] + b["tWR_ns"] / 2, 10.0))
+    mct = expo.min_cycle_time
+    expo.tCCD_L_WR = max(32 * mct, 20000)  # Max(32nCK, 20ns)
+    expo.tCCD_L_WR2 = max(16 * mct, 10000)  # Max(16nCK, 10ns)
+    expo.tCCD_L_WR_lower_limit = 32
+    expo.tCCD_L_WR2_lower_limit = 16
     expo.tFAW = _ns2ps(b["tFAW_ns"])
     expo.tCCD_L_WTR = tWTR_L_ps
     expo.tCCD_S_WTR = tWTR_S_ps
@@ -2704,9 +2707,9 @@ class DDR5_SPD:
         # Revision
         self._expo_raw_data[4] = 0x10
 
-        # Enabled Profiles: bit0=prof1, bit1=prof2 → 0x03 = both enabled
+        # Enabled Profiles: bit0=prof1, bit1=prof2
         # Upper nibble mirrors lower (per spec)
-        self._expo_raw_data[5] = 0x33  # both enabled
+        self._expo_raw_data[5] = 0x00  # 初始不启用，由 _on_expo_toggle 单独控制
 
         # Enhanced Timings flag: 0 = simple timings only
         self._expo_raw_data[6] = 0x00
