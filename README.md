@@ -1,5 +1,5 @@
 # DDR XMP Editor Pro V1.0
-
+XMP EXPO 编辑器
 A Python 3 + tkinter desktop application for editing DDR4 and DDR5 SPD (Serial Presence Detect) binary files with XMP/EXPO profile support.
 
 Author: Zhou Qiang (周强) — cnns@sina.com
