@@ -4,8 +4,8 @@ _current = 'zh'
 
 STRINGS = {
     # Title
-    'title': {'zh': 'DDR XMP Editor Pro V1.10 — 周强  cnns@sina.com',
-              'en': 'DDR XMP Editor Pro V1.10'},
+    'title': {'zh': 'DDR XMP Editor Pro V1.11 — 周强  cnns@sina.com',
+              'en': 'DDR XMP Editor Pro V1.11'},
 
     # Menu
     'menu_file': {'zh': '文件 (File)', 'en': 'File'},
@@ -129,10 +129,10 @@ STRINGS = {
     'expo_exists': {'zh': '当前 SPD 已包含 EXPO 数据。', 'en': 'SPD already contains EXPO data.'},
 
     # Help content
-    'help_title': {'zh': 'DDR XMP Editor Pro V1.10 — 使用说明', 'en': 'DDR XMP Editor Pro V1.10 — Usage Guide'},
+    'help_title': {'zh': 'DDR XMP Editor Pro V1.11 — 使用说明', 'en': 'DDR XMP Editor Pro V1.11 — Usage Guide'},
     'help_text': {
         'zh': (
-            "DDR XMP Editor Pro V1.10\n"
+            "DDR XMP Editor Pro V1.11\n"
             "DDR4/DDR5 SPD 二进制文件编辑器 — 支持 XMP 2.0/3.0 和 EXPO 配置\n"
             "作者: 周强  cnns@sina.com\n"
             "This is a fork of DDR5 XMP Editor\n\n"
@@ -159,7 +159,7 @@ STRINGS = {
             "Ctrl+O: 打开文件    Ctrl+S: 保存文件\n"
         ),
         'en': (
-            "DDR XMP Editor Pro V1.10\n"
+            "DDR XMP Editor Pro V1.11\n"
             "DDR4/DDR5 SPD binary editor — XMP 2.0/3.0 and EXPO support\n"
             "Author: Zhou Qiang  cnns@sina.com\n"
             "This is a fork of DDR5 XMP Editor\n\n"

@@ -898,6 +898,7 @@ def apply_speed_bin(spd: 'DDR5_SPD', bin_name: str) -> bool:
     # 频率
     spd.min_cycle_time = _ns2ps(b["tCKmin_ns"])
     spd.max_cycle_time = _ns2ps(b["tCKmax_ns"])
+    mct = spd.min_cycle_time
 
     # CAS Latency: 先全部清零，再设置支持的
     for cl in ALL_CL_VALUES:
@@ -931,7 +932,6 @@ def apply_speed_bin(spd: 'DDR5_SPD', bin_name: str) -> bool:
     # tCCD_M / tCCD_M_WR / tCCD_M_WTR = 0 (reserved/optional for now)
 
     # Lower limits (与 C# 原版 LoadSample 一致)
-    mct = spd.min_cycle_time
     from ddr5_utils import time_to_ticks_ddr5
     spd.tRRD_L_lower_limit = max(4, time_to_ticks_ddr5(_ns2ps(b["tRRD_L_ns"]), mct))
     spd.tCCD_L_lower_limit = max(4, time_to_ticks_ddr5(_ns2ps(max(b["tRRD_L_ns"], 4.0)), mct))
@@ -960,6 +960,7 @@ def apply_speed_bin_to_xmp(xmp: 'XMP_3_0', bin_name: str) -> bool:
 
     # 频率
     xmp.min_cycle_time = _ns2ps(b["tCKmin_ns"])
+    mct = xmp.min_cycle_time
 
     # CAS Latency
     for cl in ALL_CL_VALUES:
@@ -1006,7 +1007,6 @@ def apply_speed_bin_to_xmp(xmp: 'XMP_3_0', bin_name: str) -> bool:
     xmp.tRTP = max(tWTR_L_ps, _ns2ps(7.5))
 
     # Lower Limits
-    mct = xmp.min_cycle_time
     from ddr5_utils import time_to_ticks_ddr5
     xmp.tRRD_L_lower_limit = max(4, time_to_ticks_ddr5(tRRD_L_ps, mct))
     xmp.tCCD_L_lower_limit = max(4, time_to_ticks_ddr5(_ns2ps(max(b["tRRD_L_ns"], 4.0)), mct))
