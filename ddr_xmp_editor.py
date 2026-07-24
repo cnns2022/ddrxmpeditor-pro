@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-DDR XMP Editor Pro V1.11 — tkinter GUI 主应用
+DDR XMP Editor Pro V1.13 — tkinter GUI 主应用
 =============================================
 DDR4/DDR5 SPD 二进制文件编辑器，支持 XMP 2.0/3.0 和 EXPO 配置。
 作者: 周强  cnns@sina.com
@@ -919,9 +919,11 @@ class XMPTabFrame(ttk.Frame):
             'tCCD_L_WTR_ticks', 'tCCD_S_WTR_ticks', 'tRTP_ticks',
         ]
 
+        from_ticks = getattr(self, "_from_ticks", None)
         for attr in tick_attrs:
-            if attr in self._vars:
+            if attr in self._vars and attr != from_ticks:
                 self._vars[attr].set(getattr(self.xmp, attr))
+        self._from_ticks = None
 
         # DDR4 XMP: 填充「时间(ns)」列 (含 fc 修正)
         if self.app.spd_type == 'ddr4':
@@ -1754,11 +1756,11 @@ class MiscTabFrame(ttk.Frame):
 # =============================================================================
 
 class DDR5XMPEditorApp:
-    """DDR XMP Editor Pro V1.11 — 周强  cnns@sina.com"""
+    """DDR XMP Editor Pro V1.13 — 周强  cnns@sina.com"""
 
     def __init__(self):
         self.root = tk.Tk()
-        self.root.title("DDR XMP Editor Pro V1.11 — 周强  cnns@sina.com")
+        self.root.title("DDR XMP Editor Pro V1.13 — 周强  cnns@sina.com")
         self.root.geometry("820x750")
         self.root.minsize(780, 700)
 
@@ -1968,7 +1970,7 @@ class DDR5XMPEditorApp:
     def _on_help(self):
         """显示使用说明（自定义尺寸窗口）。"""
         help_text = (
-            "DDR5 XMP Editor Pro V1.11\n"
+            "DDR5 XMP Editor Pro V1.13\n"
             "DDR5 SPD 二进制文件编辑器 — 支持 XMP 3.0 / EXPO 配置\n"
             "作者: 周强  cnns@sina.com\n"
             "This is a fork of DDR5 XMP Editor\n\n"
@@ -2018,7 +2020,7 @@ class DDR5XMPEditorApp:
         )
 
         win = tk.Toplevel(self.root)
-        win.title("DDR5 XMP Editor Pro V1.11 — 使用说明")
+        win.title("DDR5 XMP Editor Pro V1.13 — 使用说明")
         win.geometry("750x460")
         win.resizable(True, True)
         win.transient(self.root)

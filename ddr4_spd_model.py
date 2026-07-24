@@ -8,21 +8,21 @@ DDR4 与 DDR5 的关键差异:
   - SPD: 512 字节 (DDR5 1024)
   - Byte 2: 0x0C = DDR4
   - 时序编码: MTB (0.125ns) / FTB (0.001ns)
-  - CRC: CRC-16/ARC (poly 0x8005)
+  - CRC: CRC-16/XMODEM (poly 0x1021) per JEDEC 21-C Annex L §8.1.53
   - XMP 2.0: 47 字节 per profile, 2 profiles
   - 无 EXPO
 """
 
 import enum
-from ddr5_utils import bytes_to_ushort, ushort_to_bytes, get_bit, set_bit
+from ddr5_utils import bytes_to_ushort, ushort_to_bytes, get_bit, set_bit, crc16_xmodem
 
 
 # =============================================================================
-# CRC-16/ARC (DDR4)
+# CRC-16/ARC (DDR4) — 保留供外部使用，本模块 SPD CRC 已改用 crc16_xmodem
 # =============================================================================
 
 def crc16_arc(data: bytes) -> int:
-    """CRC-16/ARC (多项式 0x8005)，用于 DDR4 SPD 校验和。"""
+    """CRC-16/ARC（多项式 0x8005，reflected）。注意：DDR4 SPD 规范要求 crc16_xmodem(0x1021)，此函数不应用于 SPD CRC。"""
     crc = 0
     for b in data:
         crc ^= b
@@ -955,7 +955,7 @@ class DDR4_SPD:
         for i in range(self.PART_NUMBER_SIZE):
             self._data[self._O_PARTNUMBER + i] = encoded[i] if i < len(encoded) else 0
 
-    # ---- CRC (CRC-16/ARC over bytes 0-125) ----
+    # ---- CRC Block1 (CRC-16/XMODEM over bytes 0-125, stored at 126-127) ----
     @property
     def crc(self) -> int:
         return bytes_to_ushort(self._data[self._O_CRC_LSB], self._data[self._O_CRC_MSB])
@@ -964,9 +964,23 @@ class DDR4_SPD:
         lo, hi = ushort_to_bytes(v)
         self._data[self._O_CRC_LSB] = lo; self._data[self._O_CRC_MSB] = hi
 
+    # ---- CRC Block2 (CRC-16/XMODEM over bytes 128-253, stored at 254-255) ----
+    _O_CRC2_LSB = 254
+    _O_CRC2_MSB = 255
+
+    @property
+    def crc2(self) -> int:
+        return bytes_to_ushort(self._data[self._O_CRC2_LSB], self._data[self._O_CRC2_MSB])
+    @crc2.setter
+    def crc2(self, v: int):
+        lo, hi = ushort_to_bytes(v)
+        self._data[self._O_CRC2_LSB] = lo; self._data[self._O_CRC2_MSB] = hi
+
     def update_crc(self):
         raw = bytes(self._data[:0x7E])  # bytes 0-125
-        self.crc = crc16_arc(raw)
+        self.crc = crc16_xmodem(raw)    # JEDEC 21-C §8.1.53: poly 0x1021
+        raw2 = bytes(self._data[0x80:0xFE])  # bytes 128-253
+        self.crc2 = crc16_xmodem(raw2)
 
     # ---- XMP ----
     @property
