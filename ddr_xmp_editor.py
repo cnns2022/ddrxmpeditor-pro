@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-DDR XMP Editor Pro V1.13 — tkinter GUI 主应用
+DDR XMP Editor Pro V1.14 — tkinter GUI 主应用
 =============================================
 DDR4/DDR5 SPD 二进制文件编辑器，支持 XMP 2.0/3.0 和 EXPO 配置。
 作者: 周强  cnns@sina.com
@@ -384,15 +384,20 @@ class SPDTabFrame(ttk.Frame):
         mct = getattr(self.spd, 'min_cycle_time', 0) or getattr(self.spd, 'min_cycle_ticks', 0)
         if self.app.spd_type == 'ddr4':
             from ddr4_spd_model import MTB_NS, FTB_NS
-            mct_ns = self.spd.min_cycle_ticks * MTB_NS if hasattr(self.spd, 'min_cycle_ticks') else 0
+            if hasattr(self.spd, 'min_cycle_ns'):
+                mct_ns = self.spd.min_cycle_ns
+                mct_ticks = self.spd.min_cycle_ticks if hasattr(self.spd,'min_cycle_ticks') else 0
+                mct_fc = self.spd.min_cycle_fc if hasattr(self.spd,'min_cycle_fc') else 0
+            else:
+                mct_ticks = self.spd.min_cycle_ticks if hasattr(self.spd,'min_cycle_ticks') else 0
+                mct_fc = 0
+                mct_ns = mct_ticks * MTB_NS
             mct_ps = mct_ns * 1000
             freq_str = f"{1.0 / mct_ns:.3f} MHz" if mct_ns > 0 else "N/A"
             mt_str = f"{2.0 / mct_ns:.3f} MT/s" if mct_ns > 0 else "N/A"
             self._freq_var.set(freq_str)
             self._mt_var.set(mt_str)
             # DDR4: ticks → Value(MTB) + Time(ps IntVar) + Ticks(DRAM)
-            mct_ticks = self.spd.min_cycle_ticks if hasattr(self.spd,'min_cycle_ticks') else 5
-            mct_fc = self.spd.min_cycle_fc if hasattr(self.spd,'min_cycle_fc') else 0
             tCK_ns = (mct_ticks * MTB_NS * 1000 + mct_fc * FTB_NS * 1000) / 1000
             _fc_map = {'cl_ticks':'cl_fc','rcd_ticks':'rcd_fc','rp_ticks':'rp_fc',
                        'rc_ticks':'rc_fc','rrds_ticks':'rrds_fc','rrdl_ticks':'rrdl_fc',
@@ -464,9 +469,13 @@ class SPDTabFrame(ttk.Frame):
 
         # Min Cycle Time
         if self.app.spd_type == 'ddr4':
-            if 'min_cycle_time' in self._vars and hasattr(self.spd, 'min_cycle_ticks'):
-                from ddr4_spd_model import MTB_NS
-                self.spd.min_cycle_ticks = int(self._vars['min_cycle_time'].get() / 1000 / MTB_NS + 0.5)
+            if 'min_cycle_time' in self._vars:
+                v = self._vars['min_cycle_time'].get()
+                if hasattr(self.spd, 'min_cycle_time'):
+                    self.spd.min_cycle_time = v      # 模型编解码，包含 fc 微调
+                elif hasattr(self.spd, 'min_cycle_ticks'):
+                    from ddr4_spd_model import MTB_NS
+                    self.spd.min_cycle_ticks = int(v / 1000 / MTB_NS + 0.5)
             # DDR4 ticks 直接写入
             for attr in ['cl_ticks', 'rcd_ticks', 'rp_ticks', 'ras_ticks', 'rc_ticks',
                          'wr_ticks', 'rfc1_ticks', 'rfc2_ticks', 'rfc4_ticks',
@@ -538,9 +547,12 @@ class XMPTabFrame(ttk.Frame):
             self._timing_frame.destroy()
         # 清除旧 vars
         for k in list(self._vars.keys()):
-            if k not in ('min_cycle_time',):
+            if k not in ('min_cycle_time', 'min_cycle_fc'):
                 del self._vars[k]
         self._cl_vars.clear()
+        if hasattr(self, '_mct_fc_spin'):
+            self._mct_fc_spin.configure(
+                state='normal' if self.app.spd_type == 'ddr4' else 'disabled')
         if self.app.spd_type == 'ddr4':
             self._build_voltage_ddr4()
             self._build_cas_ddr4()
@@ -555,13 +567,17 @@ class XMPTabFrame(ttk.Frame):
         frame = ttk.Labelframe(self, text="Profile 信息", padding=5)
         frame.pack(fill=tk.X, padx=5, pady=5)
 
-        ttk.Label(frame, text="Profile 名称:").grid(
-            row=0, column=0, sticky=tk.W, padx=2, pady=2)
+        # XMP 2.0 (DDR4) 的 profile 无名称字段，参考项目 DDR4XMPEditor 亦无此功能；
+        # 仅 DDR5 (XMP 3.0) 的 profile 名称可编辑并写入字节。
         self._name_var = tk.StringVar(value="")
-        self._name_var.trace_add('write', self._on_name_changed)
-        self._name_entry = ttk.Entry(frame, textvariable=self._name_var,
-                                     width=20)
-        self._name_entry.grid(row=0, column=1, sticky=tk.W, padx=2, pady=2)
+        self._name_entry = None
+        if self.app.spd_type != 'ddr4':
+            ttk.Label(frame, text="Profile 名称:").grid(
+                row=0, column=0, sticky=tk.W, padx=2, pady=2)
+            self._name_var.trace_add('write', self._on_name_changed)
+            self._name_entry = ttk.Entry(frame, textvariable=self._name_var,
+                                         width=20)
+            self._name_entry.grid(row=0, column=1, sticky=tk.W, padx=2, pady=2)
 
     def _build_frequency_group(self):
         """频率 + 命令速率设置。"""
@@ -603,29 +619,41 @@ class XMPTabFrame(ttk.Frame):
         ttk.Label(frame, textvariable=self._mt_var, width=16).grid(
             row=1, column=3, padx=5, pady=2)
 
+        # ---- Min Cycle Time Fine Offset (对齐 DDR4XMPEditor: -127~127 ps) ----
+        ttk.Label(frame, text="频率 Offset (ps):").grid(
+            row=2, column=0, sticky=tk.W, padx=2, pady=2)
+        v_mct_fc = tk.IntVar(value=0)
+        v_mct_fc.trace_add('write', self._on_data_changed)
+        self._vars['min_cycle_fc'] = v_mct_fc
+        vcmd_fc = (self.register(lambda P: _on_spinbox_validate_int(P, -127, 127)), '%P')
+        self._mct_fc_spin = ttk.Spinbox(frame, textvariable=v_mct_fc, width=10,
+                                        from_=-127, to=127, validate='key',
+                                        validatecommand=vcmd_fc)
+        self._mct_fc_spin.grid(row=2, column=1, sticky=tk.W, padx=2, pady=2)
+
         # 命令速率
         ttk.Label(frame, text="命令速率:").grid(
-            row=2, column=0, sticky=tk.W, padx=2, pady=2)
+            row=3, column=0, sticky=tk.W, padx=2, pady=2)
         self._cmd_rate_var = tk.StringVar(value="Undefined")
         self._cmd_rate_var.trace_add('write', self._on_cmd_rate_changed)
         cr_combo = ttk.Combobox(frame, textvariable=self._cmd_rate_var,
                                 values=["Undefined", "1N", "2N", "3N"],
                                 state='readonly', width=10)
-        cr_combo.grid(row=2, column=1, sticky=tk.W, padx=2, pady=2)
+        cr_combo.grid(row=3, column=1, sticky=tk.W, padx=2, pady=2)
 
         # Intel Dynamic Memory Boost
         self._dmb_var = tk.BooleanVar(value=False)
         self._dmb_var.trace_add('write', self._on_data_changed)
         ttk.Checkbutton(frame, text="Intel Dynamic Memory Boost",
                         variable=self._dmb_var).grid(
-            row=3, column=0, columnspan=3, sticky=tk.W, padx=2, pady=1)
+            row=4, column=0, columnspan=3, sticky=tk.W, padx=2, pady=1)
 
         # Real-time Memory Frequency OC
         self._rtoc_var = tk.BooleanVar(value=False)
         self._rtoc_var.trace_add('write', self._on_data_changed)
         ttk.Checkbutton(frame, text="Realtime Memory Frequency OC",
                         variable=self._rtoc_var).grid(
-            row=4, column=0, columnspan=3, sticky=tk.W, padx=2, pady=1)
+            row=5, column=0, columnspan=3, sticky=tk.W, padx=2, pady=1)
 
     def _build_voltage_ddr5(self):
         """DDR5 电压 (VDD, VDDQ, VPP, VMEMCTRL)。"""
@@ -642,15 +670,15 @@ class XMPTabFrame(ttk.Frame):
             ttk.Spinbox(self._voltage_frame, textvariable=var, width=7, from_=110, to=300, validate='key', validatecommand=vcmd).grid(row=0, column=col + 1, sticky=tk.W, padx=2, pady=2)
 
     def _build_voltage_ddr4(self):
-        """DDR4 电压 (仅 VDD, 默认 1.20V)。"""
+        """DDR4 电压 (仅 VDD, 默认 1.20V)。XMP 2.0 编码上限 227 (2.27V)。"""
         self._voltage_frame = ttk.Labelframe(self, text="电压 (Voltage) - DDR4", padding=5)
         self._voltage_frame.pack(fill=tk.X, padx=5, pady=5)
-        vcmd = (self.register(lambda P: _on_spinbox_validate_int(P, 110, 300)), '%P')
+        vcmd = (self.register(lambda P: _on_spinbox_validate_int(P, 110, 227)), '%P')
         ttk.Label(self._voltage_frame, text="VDD:").grid(row=0, column=0, sticky=tk.W, padx=2, pady=2)
         var = tk.IntVar(value=120)
         var.trace_add('write', self._on_data_changed)
         self._vars['vdd'] = var
-        ttk.Spinbox(self._voltage_frame, textvariable=var, width=7, from_=110, to=300, validate='key', validatecommand=vcmd).grid(row=0, column=1, sticky=tk.W, padx=2, pady=2)
+        ttk.Spinbox(self._voltage_frame, textvariable=var, width=7, from_=110, to=227, validate='key', validatecommand=vcmd).grid(row=0, column=1, sticky=tk.W, padx=2, pady=2)
 
     def _build_cas_ddr5(self):
         """DDR5 CAS (CL20-CL98)。"""
@@ -774,42 +802,82 @@ class XMPTabFrame(ttk.Frame):
                 row=row, column=7, padx=1, pady=1)
 
     def _build_timings_ddr4(self):
-        """DDR4 XMP 时序参数 (ticks + ns)。"""
+        """DDR4 XMP 时序参数: Ticks + Offset(ps) + 时间(ps) + Value。
+        Ticks = DRAM 周期数(基于 min cycle)，输入后按 min cycle 计算 时间(ps) 与 Value(MTB 编码)。"""
         self._timing_frame = ttk.Labelframe(self, text="时序参数 (Timings) - DDR4 (MTB=0.125ns)", padding=5)
         self._timing_frame.pack(fill=tk.X, padx=5, pady=5)
         frame = self._timing_frame
 
-        headers = [("参数名", 0), ("Ticks", 1), ("时间 (ns)", 2), ("", 3),
-                   ("参数名", 4), ("Ticks", 5), ("时间 (ns)", 6)]
+        headers = [("参数名", 0), ("Ticks", 1), ("Offset(ps)", 2), ("时间(ps)", 3), ("Value", 4),
+                   ("", 5),
+                   ("参数名", 6), ("Ticks", 7), ("Offset(ps)", 8), ("时间(ps)", 9), ("Value", 10)]
         for text, col in headers:
             ttk.Label(frame, text=text, font=('', 9, 'bold')).grid(row=0, column=col, padx=2, pady=1, sticky=tk.W)
 
         vcmd = (self.register(lambda P: _on_spinbox_validate_int(P, 0, 65535)), '%P')
+        vcmd_fc = (self.register(lambda P: _on_spinbox_validate_int(P, -127, 127)), '%P')
 
-        left = [('tAA (CL)', 'cl_ticks'), ('tRCD', 'rcd_ticks'), ('tRP', 'rp_ticks'),
-                ('tRAS', 'ras_ticks'), ('tRC', 'rc_ticks'), ('tWR', 'wr_ticks'),
-                ('tRFC1', 'rfc1_ticks'), ('tRFC2', 'rfc2_ticks'), ('tRFC4', 'rfc4_ticks')]
-        right = [('tRRD_S', 'rrds_ticks'), ('tRRD_L', 'rrdl_ticks'),
-                 ('tFAW', 'faw_ticks')]
+        # (名称, ticks属性, fc属性或None)
+        left = [('tAA (CL)', 'cl_ticks', 'cl_fc'), ('tRCD', 'rcd_ticks', 'rcd_fc'),
+                ('tRP', 'rp_ticks', 'rp_fc'), ('tRAS', 'ras_ticks', None),
+                ('tRC', 'rc_ticks', 'rc_fc'),
+                ('tRFC1', 'rfc1_ticks', None), ('tRFC2', 'rfc2_ticks', None),
+                ('tRFC4', 'rfc4_ticks', None)]
+        right = [('tRRD_S', 'rrds_ticks', 'rrds_fc'), ('tRRD_L', 'rrdl_ticks', 'rrdl_fc'),
+                 ('tFAW', 'faw_ticks', None)]
 
+        def build(row, c0, name, attr, fc_attr):
+            ttk.Label(frame, text=f"{name}:", width=14).grid(row=row, column=c0, sticky=tk.W, padx=1, pady=1)
+            # Ticks = DRAM 周期数 (可输入, 按 min cycle 重算 时间(ps) 与 Value)
+            dv = tk.IntVar(value=0)
+            dv.trace_add('write', lambda *a, at=attr: self._on_ddr4_dram_ticks_changed(at))
+            self._vars[f"{attr}_dram"] = dv
+            ttk.Spinbox(frame, textvariable=dv, width=7, from_=0, to=65535, validate='key', validatecommand=vcmd).grid(row=row, column=c0+1, padx=1, pady=1)
+            # Offset(ps) 微调 (fc)
+            if fc_attr:
+                fc_var = tk.IntVar(value=0); fc_var.trace_add('write', self._on_data_changed)
+                self._vars[fc_attr] = fc_var
+                ttk.Spinbox(frame, textvariable=fc_var, width=7, from_=-127, to=127, validate='key', validatecommand=vcmd_fc).grid(row=row, column=c0+2, padx=1, pady=1)
+            else:
+                # XMP 2.0 无 fc 字节的时序: 禁用框对齐 DDR4XMPEditor (IsEnabled=False)
+                fc_blank = tk.IntVar(value=0)
+                ttk.Spinbox(frame, textvariable=fc_blank, width=7, from_=-127, to=127, state='disabled').grid(row=row, column=c0+2, padx=1, pady=1)
+            # 时间(ps) = Ticks × min cycle (显示)
+            ps_var = tk.StringVar(value="0"); self._vars[f"{attr}_ps"] = ps_var
+            ttk.Label(frame, textvariable=ps_var, width=10).grid(row=row, column=c0+3, padx=1, pady=1)
+            # Value = MTB 编码 ticks (SPD 存储值, 显示)
+            val_var = tk.IntVar(value=0); self._vars[attr] = val_var
+            ttk.Label(frame, textvariable=val_var, width=7).grid(row=row, column=c0+4, padx=1, pady=1)
+
+        for i, (n, a, f) in enumerate(left):
+            build(i + 1, 0, n, a, f)
+        for i, (n, a, f) in enumerate(right):
+            build(i + 1, 6, n, a, f)
+
+    def _on_ddr4_dram_ticks_changed(self, attr):
+        """DDR4 Ticks(DRAM 周期数) → 按 min cycle 计算 时间(ps) 与 Value(MTB 编码)。"""
+        if self._setting_vars or self.xmp is None:
+            return
+        dram_key = f'{attr}_dram'
+        if dram_key not in self._vars or attr not in self._vars:
+            return
         from ddr4_spd_model import MTB_NS
-        for idx, (name, attr) in enumerate(left):
-            row = idx + 1
-            ttk.Label(frame, text=f"{name}:", width=14).grid(row=row, column=0, sticky=tk.W, padx=1, pady=1)
-            var = tk.IntVar(value=0); var.trace_add('write', self._on_data_changed)
-            self._vars[attr] = var
-            ttk.Spinbox(frame, textvariable=var, width=8, from_=0, to=65535, validate='key', validatecommand=vcmd).grid(row=row, column=1, padx=1, pady=1)
-            ns_var = tk.StringVar(value="0"); self._vars[f"{attr}_ns"] = ns_var
-            ttk.Label(frame, textvariable=ns_var, width=8).grid(row=row, column=2, padx=1, pady=1)
-
-        for idx, (name, attr) in enumerate(right):
-            row = idx + 1
-            ttk.Label(frame, text=f"{name}:", width=14).grid(row=row, column=4, sticky=tk.W, padx=1, pady=1)
-            var = tk.IntVar(value=0); var.trace_add('write', self._on_data_changed)
-            self._vars[attr] = var
-            ttk.Spinbox(frame, textvariable=var, width=8, from_=0, to=65535, validate='key', validatecommand=vcmd).grid(row=row, column=5, padx=1, pady=1)
-            ns_var = tk.StringVar(value="0"); self._vars[f"{attr}_ns"] = ns_var
-            ttk.Label(frame, textvariable=ns_var, width=8).grid(row=row, column=6, padx=1, pady=1)
+        try:
+            dram = self._vars[dram_key].get()
+        except (tk.TclError, ValueError):
+            return
+        tCK_ps = getattr(self.xmp, 'min_cycle_time', 0)  # 解码后完整 ps (含 fc)
+        if tCK_ps <= 0:
+            return
+        time_ps = dram * tCK_ps
+        mtb = round(time_ps / (MTB_NS * 1000))
+        mtb = max(0, min(65535, mtb))
+        self._vars[attr].set(mtb)
+        if hasattr(self.xmp, attr):
+            setattr(self.xmp, attr, mtb)
+        ps_key = f'{attr}_ps'
+        if ps_key in self._vars:
+            self._vars[ps_key].set(str(int(time_ps)))
 
     # ---- 数据加载 ----
 
@@ -841,6 +909,8 @@ class XMPTabFrame(ttk.Frame):
 
             # 频率
             self._vars['min_cycle_time'].set(self.xmp.min_cycle_time)
+            if 'min_cycle_fc' in self._vars and hasattr(self.xmp, 'min_cycle_fc'):
+                self._vars['min_cycle_fc'].set(self.xmp.min_cycle_fc)
 
             # 命令速率
             cr_map = {0: "Undefined", 1: "1N", 2: "2N", 3: "3N"}
@@ -875,11 +945,31 @@ class XMPTabFrame(ttk.Frame):
 
             # 时序
             if self.app.spd_type == 'ddr4':
+                from ddr4_spd_model import MTB_NS, FTB_NS
+                tCK_ps = getattr(self.xmp, 'min_cycle_time', 0)  # 解码后完整 ps (含 fc)
+                _fc_map = {'cl_ticks': 'cl_fc', 'rcd_ticks': 'rcd_fc', 'rp_ticks': 'rp_fc',
+                           'rc_ticks': 'rc_fc', 'rrds_ticks': 'rrds_fc', 'rrdl_ticks': 'rrdl_fc'}
                 for attr in ['cl_ticks', 'rcd_ticks', 'rp_ticks', 'ras_ticks', 'rc_ticks',
-                             'wr_ticks', 'rfc1_ticks', 'rfc2_ticks', 'rfc4_ticks',
+                             'rfc1_ticks', 'rfc2_ticks', 'rfc4_ticks',
                              'rrds_ticks', 'rrdl_ticks', 'faw_ticks']:
                     if attr in self._vars and hasattr(self.xmp, attr):
-                        self._vars[attr].set(getattr(self.xmp, attr))
+                        mtb = getattr(self.xmp, attr)
+                        self._vars[attr].set(mtb)
+                        fc = getattr(self.xmp, _fc_map[attr], 0) if attr in _fc_map else 0
+                        if tCK_ps > 0:
+                            time_ps = mtb * (MTB_NS * 1000) + fc * (FTB_NS * 1000)
+                            dram = round(time_ps / tCK_ps)
+                        else:
+                            dram = mtb
+                        dram_key = f'{attr}_dram'
+                        if dram_key in self._vars:
+                            self._vars[dram_key].set(max(0, dram))
+                        ps_key = f'{attr}_ps'
+                        if ps_key in self._vars:
+                            self._vars[ps_key].set(str(int(dram * tCK_ps)) if tCK_ps > 0 else "0")
+                for fc_attr in ['cl_fc', 'rcd_fc', 'rp_fc', 'rc_fc', 'rrds_fc', 'rrdl_fc']:
+                    if fc_attr in self._vars and hasattr(self.xmp, fc_attr):
+                        self._vars[fc_attr].set(getattr(self.xmp, fc_attr))
             else:
                 for attr in ['tAA', 'tRCD', 'tRP', 'tRAS', 'tRC', 'tWR',
                              'tRFC1', 'tRFC2', 'tRFC',
@@ -891,11 +981,12 @@ class XMPTabFrame(ttk.Frame):
                     if limit_attr in self._vars:
                         self._vars[limit_attr].set(getattr(self.xmp, limit_attr, 0))
 
-            # 名称编辑可用性
-            if self.xmp.is_user_profile():
-                self._name_entry.configure(state='disabled')
-            else:
-                self._name_entry.configure(state='normal')
+            # 名称编辑可用性 (DDR4 无名称输入框)
+            if self._name_entry is not None:
+                if self.xmp.is_user_profile():
+                    self._name_entry.configure(state='disabled')
+                else:
+                    self._name_entry.configure(state='normal')
         finally:
             self._setting_vars = False
 
@@ -925,19 +1016,18 @@ class XMPTabFrame(ttk.Frame):
                 self._vars[attr].set(getattr(self.xmp, attr))
         self._from_ticks = None
 
-        # DDR4 XMP: 填充「时间(ns)」列 (含 fc 修正)
+        # DDR4 XMP: 填充「时间(ps)」列 = DRAM Ticks × min cycle
         if self.app.spd_type == 'ddr4':
-            from ddr4_spd_model import MTB_NS, FTB_NS
-            _fc_map = {'cl_ticks': 'cl_fc', 'rcd_ticks': 'rcd_fc', 'rp_ticks': 'rp_fc',
-                       'rc_ticks': 'rc_fc', 'rrds_ticks': 'rrds_fc', 'rrdl_ticks': 'rrdl_fc'}
-            for attr in ['cl_ticks', 'rcd_ticks', 'rp_ticks', 'ras_ticks', 'rc_ticks',
-                         'wr_ticks', 'rfc1_ticks', 'rfc2_ticks', 'rfc4_ticks',
-                         'rrds_ticks', 'rrdl_ticks', 'faw_ticks']:
-                ns_key = f'{attr}_ns'
-                if ns_key in self._vars and attr in self._vars:
-                    ticks = self._vars[attr].get()
-                    fc = getattr(self.xmp, _fc_map[attr], 0) if attr in _fc_map else 0
-                    self._vars[ns_key].set(f'{ticks * MTB_NS + fc * FTB_NS:.3f}')
+            tCK_ps = getattr(self.xmp, 'min_cycle_time', 0)  # 解码后完整 ps (含 fc)
+            if tCK_ps > 0:
+                for attr in ['cl_ticks', 'rcd_ticks', 'rp_ticks', 'ras_ticks', 'rc_ticks',
+                             'rfc1_ticks', 'rfc2_ticks', 'rfc4_ticks',
+                             'rrds_ticks', 'rrdl_ticks', 'faw_ticks']:
+                    ps_key = f'{attr}_ps'
+                    dram_key = f'{attr}_dram'
+                    if ps_key in self._vars:
+                        dram = self._vars[dram_key].get() if dram_key in self._vars else 0
+                        self._vars[ps_key].set(str(int(dram * tCK_ps)))
         self._tick_updating = False
 
     # ---- 事件回调 ----
@@ -949,6 +1039,8 @@ class XMPTabFrame(ttk.Frame):
 
         # Min Cycle Time
         self.xmp.min_cycle_time = self._vars['min_cycle_time'].get()
+        if 'min_cycle_fc' in self._vars and hasattr(self.xmp, 'min_cycle_fc'):
+            self.xmp.min_cycle_fc = self._vars['min_cycle_fc'].get()
 
         # 特性
         self.xmp.intel_dynamic_memory_boost = self._dmb_var.get()
@@ -974,10 +1066,13 @@ class XMPTabFrame(ttk.Frame):
         # 时序
         if self.app.spd_type == 'ddr4':
             for attr in ['cl_ticks', 'rcd_ticks', 'rp_ticks', 'ras_ticks', 'rc_ticks',
-                         'wr_ticks', 'rfc1_ticks', 'rfc2_ticks', 'rfc4_ticks',
+                         'rfc1_ticks', 'rfc2_ticks', 'rfc4_ticks',
                          'rrds_ticks', 'rrdl_ticks', 'faw_ticks']:
                 if attr in self._vars and hasattr(self.xmp, attr):
                     setattr(self.xmp, attr, self._vars[attr].get())
+            for fc_attr in ['cl_fc', 'rcd_fc', 'rp_fc', 'rc_fc', 'rrds_fc', 'rrdl_fc']:
+                if fc_attr in self._vars and hasattr(self.xmp, fc_attr):
+                    setattr(self.xmp, fc_attr, self._vars[fc_attr].get())
         else:
             for attr in ['tAA', 'tRCD', 'tRP', 'tRAS', 'tRC', 'tWR',
                          'tRFC1', 'tRFC2', 'tRFC',
@@ -995,6 +1090,8 @@ class XMPTabFrame(ttk.Frame):
         """Profile 名称变更。"""
         if self._setting_vars or self.spd is None or self.xmp is None:
             return
+        if self.app.spd_type == 'ddr4':
+            return  # XMP 2.0 无名称字段，不写入
         if self.xmp.is_user_profile():
             return
         name = self._name_var.get()
@@ -1756,11 +1853,11 @@ class MiscTabFrame(ttk.Frame):
 # =============================================================================
 
 class DDR5XMPEditorApp:
-    """DDR XMP Editor Pro V1.13 — 周强  cnns@sina.com"""
+    """DDR XMP Editor Pro V1.14 — 周强  cnns@sina.com"""
 
     def __init__(self):
         self.root = tk.Tk()
-        self.root.title("DDR XMP Editor Pro V1.13 — 周强  cnns@sina.com")
+        self.root.title("DDR XMP Editor Pro V1.14 — 周强  cnns@sina.com")
         self.root.geometry("820x750")
         self.root.minsize(780, 700)
 
@@ -1970,7 +2067,7 @@ class DDR5XMPEditorApp:
     def _on_help(self):
         """显示使用说明（自定义尺寸窗口）。"""
         help_text = (
-            "DDR5 XMP Editor Pro V1.13\n"
+            "DDR5 XMP Editor Pro V1.14\n"
             "DDR5 SPD 二进制文件编辑器 — 支持 XMP 3.0 / EXPO 配置\n"
             "作者: 周强  cnns@sina.com\n"
             "This is a fork of DDR5 XMP Editor\n\n"
@@ -2020,7 +2117,7 @@ class DDR5XMPEditorApp:
         )
 
         win = tk.Toplevel(self.root)
-        win.title("DDR5 XMP Editor Pro V1.13 — 使用说明")
+        win.title("DDR5 XMP Editor Pro V1.14 — 使用说明")
         win.geometry("750x460")
         win.resizable(True, True)
         win.transient(self.root)

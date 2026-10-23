@@ -375,6 +375,15 @@ class DDR4_XMP:
         hundredths = (value - 100) if value >= 100 else value
         self._data[self._O_VOLTAGE] = ((0x80 if ones else 0x00) | (hundredths & 0x7F)) & 0xFF
 
+    # GUI 使用 vdd 名称 (百分之一伏特, 如 135 = 1.35V)
+    @property
+    def vdd(self) -> int:
+        return self.voltage
+
+    @vdd.setter
+    def vdd(self, value: int):
+        self.voltage = value
+
     # ---- 频率 ----
     @property
     def min_cycle_ticks(self) -> int:
@@ -395,7 +404,7 @@ class DDR4_XMP:
 
     @property
     def min_cycle_ns(self) -> float:
-        return ticks_with_ftb(self.min_cycle_ticks, self._data[self._O_SDRAM_CYCLE_FC])
+        return ticks_with_ftb(self.min_cycle_ticks, self.min_cycle_fc)
 
     # ---- CAS Latency ----
     def is_cl_supported(self, cl: int) -> bool:
@@ -568,8 +577,11 @@ class DDR4_XMP:
         return round(self.min_cycle_ns * 1000)  # ns → ps
     @min_cycle_time.setter
     def min_cycle_time(self, v: int):
-        self.min_cycle_ticks = int(v / 1000 / MTB_NS + 0.5)
-        self.min_cycle_fc = 0
+        # 拆成 MTB ticks(基) + FTB fc(微调)，保证往返一致，不丢失小数部分
+        mtb_ps = int(MTB_NS * 1000)
+        ticks, fc = divmod(max(0, int(v)), mtb_ps)
+        self.min_cycle_ticks = ticks
+        self.min_cycle_fc = fc
 
     @property
     def tAA(self) -> int: return round(ticks_with_ftb(self.cl_ticks, self.cl_fc) * 1000)
@@ -625,8 +637,7 @@ class DDR4_XMP:
     def tRFC(self, v: int): self.rfc4_ticks = v & 0xFFFF
     @property
     def tRFC_ticks(self) -> int: return self.rfc4_ticks
-    # DDR4 XMP 电压默认值 (1.20V / 1.20V / 2.50V)
-    vdd = 120
+    # DDR4 XMP 默认值 (参考 DDR4XMPEditor: 仅 voltage 有真实字节编码)
     vddq = 120
     vpp = 250
     vmemctrl = 120
@@ -793,7 +804,7 @@ class DDR4_SPD:
 
     @property
     def min_cycle_ns(self) -> float:
-        return ticks_with_ftb(self.min_cycle_ticks, self._data[self._O_MIN_CYCLE_FC], self.mtb_ns, self.ftb_ns)
+        return ticks_with_ftb(self.min_cycle_ticks, self.min_cycle_fc, self.mtb_ns, self.ftb_ns)
 
     # ---- CAS Latency (CL7-CL36) ----
     def is_cl_supported(self, cl: int) -> bool:
