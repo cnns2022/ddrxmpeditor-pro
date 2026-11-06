@@ -2443,6 +2443,18 @@ class DDR5_SPD:
             else:
                 self._xmp_header_data[offset + i] = 0
 
+    def _ensure_xmp_header(self):
+        """确保 XMP header 有正确的 magic 和 version。
+
+        从无到有启用 XMP 时调用，写入 magic (0C 4A) 和 version (3.0)，
+        并设置 xmp_found = True。
+        """
+        if not self.xmp_found:
+            self._xmp_header_data[0] = 0x0C
+            self._xmp_header_data[1] = 0x4A
+            self._xmp_header_data[2] = self.XMP_VERSION
+            self.xmp_found = True
+
     @property
     def xmp1_enabled(self) -> bool:
         return bool(self._xmp_header_data[self._O_XH_PROFILE_ENABLED] & 0x1)
@@ -2450,6 +2462,7 @@ class DDR5_SPD:
     @xmp1_enabled.setter
     def xmp1_enabled(self, value: bool):
         if value:
+            self._ensure_xmp_header()
             self._xmp_header_data[self._O_XH_PROFILE_ENABLED] |= 0x1
         else:
             self._xmp_header_data[self._O_XH_PROFILE_ENABLED] &= 0xFE
@@ -2461,6 +2474,7 @@ class DDR5_SPD:
     @xmp2_enabled.setter
     def xmp2_enabled(self, value: bool):
         if value:
+            self._ensure_xmp_header()
             self._xmp_header_data[self._O_XH_PROFILE_ENABLED] |= 0x2
         else:
             self._xmp_header_data[self._O_XH_PROFILE_ENABLED] &= 0xFD
@@ -2473,6 +2487,7 @@ class DDR5_SPD:
     def xmp3_enabled(self, value: bool):
         if not self.expo_found:
             if value:
+                self._ensure_xmp_header()
                 self._xmp_header_data[self._O_XH_PROFILE_ENABLED] |= 0x4
             else:
                 self._xmp_header_data[self._O_XH_PROFILE_ENABLED] &= 0xFB
@@ -2494,6 +2509,7 @@ class DDR5_SPD:
     def xmp_user1_enabled(self, value: bool):
         if not self.expo_found:
             if value:
+                self._ensure_xmp_header()
                 if not self.xmp_user1_exists:
                     self.xmp_profiles[3].load_sample()
             else:
@@ -2515,6 +2531,7 @@ class DDR5_SPD:
     @xmp_user2_enabled.setter
     def xmp_user2_enabled(self, value: bool):
         if value:
+            self._ensure_xmp_header()
             if not self.xmp_user2_exists:
                 self.xmp_profiles[4].load_sample()
         else:
@@ -2797,21 +2814,21 @@ class DDR5_SPD:
         raw_spd = bytes(self._data[:0x1FE])
         self.crc = crc16_xmodem(raw_spd)
 
+        # 2. XMP Header CRC（仅当 XMP header 有效时）
         if self.xmp_found:
             self._update_xmp_header_crc()
 
-            # 更新启用的 XMP Profile CRC
-            if self.xmp1_enabled:
-                self.xmp1.update_crc()
-            if self.xmp2_enabled:
-                self.xmp2.update_crc()
-            if self.xmp3_enabled and not self.expo_found:
-                self.xmp3.update_crc()
-            if self.xmp_user1_enabled and not self.expo_found:
-                self.xmp_user1.update_crc()
-            if self.xmp_user2_enabled:
-                self.xmp_user2.update_crc()
+        # 3. XMP Profile CRC —— 更新所有非空 profile
+        #    （不依赖 xmp_found 和 enabled 状态，避免有数据的 profile 显示 CRC 错误）
+        for i, prof in enumerate(self.xmp_profiles):
+            if prof is None or prof.is_empty():
+                continue
+            # EXPO 覆盖区域的 XMP profile 跳过（profile 3 / user1 位置）
+            if self.expo_found and i in (2, 3):
+                continue
+            prof.update_crc()
 
+        # 4. EXPO CRC（整个 EXPO block 一个 CRC，非单个 profile）
         if self.expo_found:
             self._update_expo_crc()
 
