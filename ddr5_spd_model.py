@@ -2926,11 +2926,12 @@ class DDR5_SPD:
         if spd._data[cls._O_MEMORY_TYPE] != 0x12:
             raise ValueError("SPD 不是 DDR5 类型 (Byte 2 != 0x12)，不支持")
 
-        # 验证模组类型 (仅支持 UDIMM 0x02 和 SODIMM 0x03)
+        # 验证模组类型 (UDIMM 0x02 / SODIMM 0x03 / CUDIMM 0x05 / CSODIMM 0x06)
         module_type = spd._data[cls._O_MODULE_TYPE]
-        if module_type not in (0x02, 0x03):
+        if module_type not in (0x02, 0x03, 0x05, 0x06):
             raise ValueError(
-                f"SPD 模组类型不是 UDIMM/SODIMM (Byte 3 = 0x{module_type:02X})，不支持")
+                f"SPD 模组类型不受支持 (Byte 3 = 0x{module_type:02X})，"
+                "支持 UDIMM/SODIMM/CUDIMM/CSODIMM")
 
         # 检测 XMP 3.0
         xmp_magic = data[cls.XMP_OFFSET:cls.XMP_OFFSET + 2]

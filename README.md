@@ -1,4 +1,4 @@
-# DDR XMP Editor Pro V1.14
+# DDR XMP Editor Pro V1.15
 XMP EXPO 编辑器
 A Python 3 + tkinter desktop application for editing DDR4 and DDR5 SPD (Serial Presence Detect) binary files with XMP/EXPO profile support.
 
@@ -41,7 +41,7 @@ Selecting a speed bin and clicking **Apply** auto-fills all timing parameters, C
 
 | DDR Type | CRC Algorithm | Coverage | Storage Offset |
 |----------|--------------|----------|----------------|
-| DDR4 | CRC-16/ARC (0x8005) | Bytes 0-125 | Bytes 126-127 |
+| DDR4 | CRC-16/XMODEM (0x1021) | Bytes 0-125 | Bytes 126-127 |
 | DDR5 | CRC-16/XMODEM (0x1021) | Bytes 0-509 | Bytes 510-511 |
 
 ### Misc Settings

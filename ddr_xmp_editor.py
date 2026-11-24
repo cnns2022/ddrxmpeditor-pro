@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-DDR XMP Editor Pro V1.14 — tkinter GUI 主应用
+DDR XMP Editor Pro V1.15 — tkinter GUI 主应用
 =============================================
 DDR4/DDR5 SPD 二进制文件编辑器，支持 XMP 2.0/3.0 和 EXPO 配置。
 作者: 周强  cnns@sina.com
@@ -11,7 +11,7 @@ This is a fork of DDR5 XMP Editor
   - DDR4: 512B SPD + XMP 2.0 (2 profiles) + 24 Speed Bins
   - DDR5: 1024B SPD + XMP 3.0 (5 profiles) + EXPO + 64 Speed Bins
   - Speed Bin 一键填充 (SPD / XMP / EXPO)
-  - CRC 自动计算 (DDR4=CRC-16/ARC, DDR5=CRC-16/XMODEM)
+  - CRC 自动计算 (DDR4/DDR5 均为 CRC-16/XMODEM)
   - XMP Profile 复制、导入、导出
 """
 
@@ -1473,6 +1473,8 @@ class MiscTabFrame(ttk.Frame):
 
         self._vars: dict = {}
         self._setting_vars = False
+        # DDR4 模型没有这些字段的 setter，需要禁用对应控件（避免"能改但不生效"）
+        self._ddr4_locked_widgets: list = []
 
         self._build_ui()
 
@@ -1508,6 +1510,11 @@ class MiscTabFrame(ttk.Frame):
         self._build_copy_xmp_group(scroll_frame)
         self._build_import_export_group(scroll_frame)
 
+        # DDR4：这些字段在模型里是空 setter，直接禁用下拉，避免改了不生效
+        if getattr(self.app, 'spd_type', None) == 'ddr4':
+            for widget in self._ddr4_locked_widgets:
+                widget.configure(state='disabled')
+
     def _build_physical_group(self, parent):
         """物理特性。"""
         frame = ttk.Labelframe(parent, text="物理特性 (Physical)", padding=5)
@@ -1522,6 +1529,7 @@ class MiscTabFrame(ttk.Frame):
         combo = ttk.Combobox(frame, textvariable=self._ff_var,
                              values=ff_names, state='readonly', width=14)
         combo.grid(row=0, column=1, sticky=tk.W, padx=2, pady=2)
+        self._ddr4_locked_widgets.append(combo)
 
     def _build_density_group(self, parent):
         """密度/Downbin 设置。"""
@@ -1538,6 +1546,7 @@ class MiscTabFrame(ttk.Frame):
         combo = ttk.Combobox(frame, textvariable=self._density_var,
                              values=density_names, state='readonly', width=10)
         combo.grid(row=0, column=1, sticky=tk.W, padx=2, pady=2)
+        self._ddr4_locked_widgets.append(combo)
 
         # Bank Groups
         ttk.Label(frame, text="Bank Groups:").grid(
@@ -1547,6 +1556,7 @@ class MiscTabFrame(ttk.Frame):
         combo = ttk.Combobox(frame, textvariable=self._bank_groups_var,
                              values=BANK_GROUPS_MAP, state='readonly', width=10)
         combo.grid(row=1, column=1, sticky=tk.W, padx=2, pady=2)
+        self._ddr4_locked_widgets.append(combo)
 
         # Banks per Bank Group
         ttk.Label(frame, text="Banks per Bank Group:").grid(
@@ -1557,6 +1567,7 @@ class MiscTabFrame(ttk.Frame):
                              values=BANKS_PER_BANK_GROUP_MAP,
                              state='readonly', width=10)
         combo.grid(row=2, column=1, sticky=tk.W, padx=2, pady=2)
+        self._ddr4_locked_widgets.append(combo)
 
         # Column Addresses
         ttk.Label(frame, text="Column Addresses:").grid(
@@ -1567,6 +1578,7 @@ class MiscTabFrame(ttk.Frame):
                              values=COLUMN_ADDRESS_MAP,
                              state='readonly', width=10)
         combo.grid(row=3, column=1, sticky=tk.W, padx=2, pady=2)
+        self._ddr4_locked_widgets.append(combo)
 
         # Row Addresses
         ttk.Label(frame, text="Row Addresses:").grid(
@@ -1577,6 +1589,7 @@ class MiscTabFrame(ttk.Frame):
                              values=ROW_ADDRESS_MAP,
                              state='readonly', width=10)
         combo.grid(row=4, column=1, sticky=tk.W, padx=2, pady=2)
+        self._ddr4_locked_widgets.append(combo)
 
     def _build_module_org_group(self, parent):
         """模组组织。"""
@@ -1592,6 +1605,7 @@ class MiscTabFrame(ttk.Frame):
                              values=DEVICE_WIDTH_MAP,
                              state='readonly', width=10)
         combo.grid(row=0, column=1, sticky=tk.W, padx=2, pady=2)
+        self._ddr4_locked_widgets.append(combo)
 
     def _build_module_info_group(self, parent):
         """模组信息。"""
@@ -1853,11 +1867,11 @@ class MiscTabFrame(ttk.Frame):
 # =============================================================================
 
 class DDR5XMPEditorApp:
-    """DDR XMP Editor Pro V1.14 — 周强  cnns@sina.com"""
+    """DDR XMP Editor Pro V1.15 — 周强  cnns@sina.com"""
 
     def __init__(self):
         self.root = tk.Tk()
-        self.root.title("DDR XMP Editor Pro V1.14 — 周强  cnns@sina.com")
+        self.root.title("DDR XMP Editor Pro V1.15 — 周强  cnns@sina.com")
         self.root.geometry("820x750")
         self.root.minsize(780, 700)
 
@@ -2067,7 +2081,7 @@ class DDR5XMPEditorApp:
     def _on_help(self):
         """显示使用说明（自定义尺寸窗口）。"""
         help_text = (
-            "DDR5 XMP Editor Pro V1.14\n"
+            "DDR5 XMP Editor Pro V1.15\n"
             "DDR5 SPD 二进制文件编辑器 — 支持 XMP 3.0 / EXPO 配置\n"
             "作者: 周强  cnns@sina.com\n"
             "This is a fork of DDR5 XMP Editor\n\n"
@@ -2117,7 +2131,7 @@ class DDR5XMPEditorApp:
         )
 
         win = tk.Toplevel(self.root)
-        win.title("DDR5 XMP Editor Pro V1.14 — 使用说明")
+        win.title("DDR5 XMP Editor Pro V1.15 — 使用说明")
         win.geometry("750x460")
         win.resizable(True, True)
         win.transient(self.root)
